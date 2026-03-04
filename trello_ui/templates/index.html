@@ -1,0 +1,1476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stinson's Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #080b12;
+      --bg2:        #0d1120;
+      --surface:    #111827;
+      --surface2:   #161e30;
+      --border:     rgba(255,255,255,.07);
+      --border-hi:  rgba(167,139,250,.35);
+      --text:       #e2e8f0;
+      --text-dim:   #94a3b8;
+      --muted:      #64748b;
+      --accent:     #a78bfa;
+      --accent2:    #38bdf8;
+      --accent-glow:rgba(167,139,250,.25);
+      --cyan-glow:  rgba(56,189,248,.2);
+      --gold:       #fbbf24;
+      --green:      #34d399;
+      --green-glow: rgba(52,211,153,.2);
+      --red:        #f87171;
+      --col-w:      272px;
+      --rad:        12px;
+      --rad-sm:     8px;
+      --transition: .18s ease;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Scrollbar ────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(167,139,250,.3); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(167,139,250,.5); }
+
+    /* ── Layout ───────────────────────────────────────────────── */
+    #app { display: flex; flex-direction: column; height: 100%; }
+
+    /* ── Auth page ────────────────────────────────────────────── */
+    #auth-overlay {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(167,139,250,.12) 0%, transparent 70%),
+                  radial-gradient(ellipse 60% 50% at 80% 100%, rgba(56,189,248,.08) 0%, transparent 60%),
+                  var(--bg);
+    }
+
+    /* Animated background orbs */
+    #auth-overlay::before, #auth-overlay::after {
+      content: ''; position: absolute; border-radius: 50%; filter: blur(80px); pointer-events: none;
+      animation: orb 8s ease-in-out infinite alternate;
+    }
+    #auth-overlay::before {
+      width: 400px; height: 400px; top: -100px; left: -100px;
+      background: radial-gradient(circle, rgba(167,139,250,.15), transparent 70%);
+    }
+    #auth-overlay::after {
+      width: 300px; height: 300px; bottom: -80px; right: -80px;
+      background: radial-gradient(circle, rgba(56,189,248,.12), transparent 70%);
+      animation-delay: -4s;
+    }
+    @keyframes orb { from { transform: translate(0,0) scale(1); } to { transform: translate(40px,30px) scale(1.1); } }
+
+    .auth-card {
+      position: relative; z-index: 1;
+      background: rgba(17,24,39,.85);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 42px 46px;
+      width: 430px;
+      box-shadow: 0 0 0 1px rgba(167,139,250,.08),
+                  0 32px 80px rgba(0,0,0,.5),
+                  inset 0 1px 0 rgba(255,255,255,.06);
+      backdrop-filter: blur(20px);
+    }
+
+    .auth-logo {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 30px;
+    }
+    .auth-logo svg { width: 36px; height: 36px; }
+    .auth-logo-text {
+      font-size: 1.2rem; font-weight: 800; letter-spacing: -.5px;
+      background: linear-gradient(135deg, #a78bfa 0%, #38bdf8 60%, #fbbf24 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .auth-card h2 { font-size: 1.05rem; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .auth-card p  { font-size: .82rem; color: var(--text-dim); margin-bottom: 26px; line-height: 1.6; }
+    .auth-card p a { color: var(--accent); text-decoration: none; font-weight: 500; }
+    .auth-card p a:hover { color: #c4b5fd; text-decoration: underline; }
+
+    label {
+      display: block; font-size: .72rem; font-weight: 600; color: var(--muted);
+      margin-bottom: 6px; letter-spacing: .07em; text-transform: uppercase;
+    }
+    .field { margin-bottom: 16px; }
+
+    input[type="text"], input[type="password"], select {
+      width: 100%; padding: 10px 13px;
+      border: 1px solid rgba(255,255,255,.09);
+      border-radius: var(--rad-sm); font-size: .88rem; color: var(--text);
+      background: rgba(255,255,255,.04); outline: none;
+      transition: border-color var(--transition), box-shadow var(--transition);
+      font-family: inherit;
+    }
+    input[type="text"]::placeholder,
+    input[type="password"]::placeholder { color: var(--muted); }
+    input:focus, select:focus {
+      border-color: rgba(167,139,250,.5);
+      box-shadow: 0 0 0 3px rgba(167,139,250,.12);
+      background: rgba(255,255,255,.06);
+    }
+    select option { background: #1e293b; color: var(--text); }
+
+    /* ── Buttons ──────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 9px 18px; border-radius: var(--rad-sm); font-size: .86rem;
+      font-weight: 600; cursor: pointer; border: none;
+      transition: all var(--transition); font-family: inherit;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #7c3aed, #a78bfa);
+      color: #fff; width: 100%; justify-content: center; margin-top: 4px;
+      box-shadow: 0 4px 20px rgba(124,58,237,.35);
+    }
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #6d28d9, #8b5cf6);
+      box-shadow: 0 6px 28px rgba(124,58,237,.5);
+      transform: translateY(-1px);
+    }
+    .btn-sm { padding: 6px 13px; font-size: .8rem; }
+    .btn-ghost {
+      background: rgba(255,255,255,.05); color: var(--text-dim);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background: rgba(255,255,255,.09); color: var(--text); border-color: rgba(255,255,255,.12); }
+
+    /* ── Topbar ───────────────────────────────────────────────── */
+    #topbar {
+      display: flex; align-items: center; gap: 14px;
+      padding: 0 24px; height: 58px; flex-shrink: 0;
+      background: rgba(13,17,32,.9);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(16px);
+    }
+
+    .nav-logo {
+      display: flex; align-items: center; gap: 9px;
+      font-size: .95rem; font-weight: 800; letter-spacing: -.3px; flex-shrink: 0;
+    }
+    .nav-logo-text {
+      background: linear-gradient(135deg, #a78bfa 0%, #38bdf8 55%, #fbbf24 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .nav-logo svg { width: 22px; height: 22px; flex-shrink: 0; }
+
+    .nav-divider { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
+
+    #board-select-wrap { display: flex; align-items: center; }
+    #board-select {
+      min-width: 180px; padding: 6px 10px; font-size: .83rem;
+      border-radius: var(--rad-sm);
+    }
+
+    .spacer { flex: 1; }
+
+    #search-wrap { position: relative; }
+    #search-wrap svg {
+      position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+      color: var(--muted); pointer-events: none;
+    }
+    #search {
+      width: 210px; padding: 7px 12px 7px 32px;
+      border-radius: 20px; font-size: .83rem;
+    }
+
+    #filter-closed-wrap {
+      display: flex; align-items: center; gap: 6px;
+      font-size: .8rem; color: var(--muted); cursor: pointer;
+    }
+    #filter-closed-wrap input { width: auto; accent-color: var(--accent); }
+    #filter-closed-wrap:hover { color: var(--text-dim); }
+
+    /* ── Stats bar ────────────────────────────────────────────── */
+    #statsbar {
+      display: none; align-items: center; gap: 24px;
+      padding: 8px 24px;
+      background: rgba(13,17,32,.7);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0; font-size: .8rem; color: var(--muted);
+    }
+    .stat { display: flex; align-items: center; gap: 6px; }
+    .stat strong { color: var(--text); font-weight: 700; }
+    .stat-dot { width: 7px; height: 7px; border-radius: 50%; }
+
+    /* ── Board ────────────────────────────────────────────────── */
+    #board {
+      display: flex; gap: 14px; padding: 22px 24px;
+      overflow-x: auto; flex: 1; align-items: flex-start;
+      background: radial-gradient(ellipse 70% 50% at 20% 80%, rgba(167,139,250,.04) 0%, transparent 60%),
+                  radial-gradient(ellipse 50% 40% at 80% 20%, rgba(56,189,248,.03) 0%, transparent 60%),
+                  var(--bg);
+    }
+
+    /* ── Column ───────────────────────────────────────────────── */
+    .column {
+      flex-shrink: 0; width: var(--col-w);
+      display: flex; flex-direction: column;
+    }
+    .col-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-bottom: none;
+      border-radius: var(--rad) var(--rad) 0 0;
+      position: relative; overflow: hidden;
+    }
+    .col-header::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      opacity: .7;
+    }
+    .col-title { font-size: .82rem; font-weight: 700; color: var(--text); }
+    .col-count {
+      font-size: .72rem; font-weight: 700; color: var(--accent);
+      background: rgba(167,139,250,.12);
+      border: 1px solid rgba(167,139,250,.2);
+      border-radius: 20px; padding: 1px 8px;
+    }
+    .col-body {
+      display: flex; flex-direction: column; gap: 7px;
+      padding: 8px 7px;
+      background: rgba(13,17,32,.6);
+      border: 1px solid var(--border); border-top: none;
+      border-radius: 0 0 var(--rad) var(--rad);
+      min-height: 60px; max-height: calc(100vh - 188px); overflow-y: auto;
+      backdrop-filter: blur(4px);
+    }
+
+    /* ── Card ─────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border-radius: var(--rad-sm);
+      padding: 12px 13px; cursor: pointer;
+      border: 1px solid var(--border);
+      transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+      position: relative; overflow: hidden;
+    }
+    .card::before {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,.02) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .card:hover {
+      border-color: rgba(167,139,250,.4);
+      box-shadow: 0 0 0 1px rgba(167,139,250,.15), 0 8px 32px rgba(0,0,0,.4),
+                  0 0 20px rgba(167,139,250,.08);
+      transform: translateY(-2px);
+    }
+
+    .card-labels { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+    .label-chip { height: 5px; border-radius: 3px; min-width: 28px; opacity: .9; }
+
+    .card-name { font-size: .86rem; font-weight: 600; line-height: 1.45; color: var(--text); }
+
+    .card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 9px; }
+    .due-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: .7rem; font-weight: 600; border-radius: 20px; padding: 2px 8px;
+    }
+    .due-ok      { background: rgba(52,211,153,.12); color: #34d399; border: 1px solid rgba(52,211,153,.25); }
+    .due-soon    { background: rgba(251,191,36,.1);  color: #fbbf24; border: 1px solid rgba(251,191,36,.2); }
+    .due-overdue { background: rgba(248,113,113,.1); color: #f87171; border: 1px solid rgba(248,113,113,.2); }
+    .due-done    { background: rgba(52,211,153,.07); color: #6ee7b7; border: 1px solid rgba(52,211,153,.15); text-decoration: line-through; }
+
+    .member-avatars { display: flex; margin-left: auto; }
+    .avatar {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: linear-gradient(135deg, #7c3aed, #2563eb);
+      color: #fff; font-size: .6rem; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      border: 1.5px solid var(--surface); margin-left: -6px;
+    }
+    .avatar:first-child { margin-left: 0; }
+
+    /* ── Placeholder / Spinner ────────────────────────────────── */
+    #placeholder {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 14px; color: var(--muted);
+    }
+    #placeholder svg { width: 52px; height: 52px; opacity: .15; }
+    #placeholder p { font-size: .88rem; }
+
+    .spinner {
+      width: 26px; height: 26px;
+      border: 2px solid rgba(167,139,250,.2);
+      border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Modal overlay ────────────────────────────────────────── */
+    #modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,.6); backdrop-filter: blur(6px);
+      align-items: flex-start; justify-content: center; padding-top: 72px;
+    }
+    #modal-overlay.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      width: 540px; max-height: 82vh; overflow-y: auto;
+      box-shadow: 0 0 0 1px rgba(167,139,250,.08), 0 32px 80px rgba(0,0,0,.6);
+      padding: 28px 30px; position: relative;
+      animation: slideUp .2s ease;
+    }
+    @keyframes slideUp { from { opacity:0; transform: translateY(18px); } to { opacity:1; transform: translateY(0); } }
+
+    .modal-close {
+      position: absolute; top: 14px; right: 14px;
+      background: rgba(255,255,255,.05); border: 1px solid var(--border);
+      border-radius: 7px; cursor: pointer; width: 28px; height: 28px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--muted); transition: all var(--transition);
+    }
+    .modal-close:hover { background: rgba(255,255,255,.1); color: var(--text); }
+
+    .modal-list-tag {
+      font-size: .7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--accent); margin-bottom: 7px;
+    }
+    .modal-title { font-size: 1.08rem; font-weight: 700; line-height: 1.4; margin-bottom: 16px; color: var(--text); }
+
+    .modal-labels { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+    .modal-label { font-size: .72rem; font-weight: 600; padding: 3px 10px; border-radius: 20px; color: #fff; }
+
+    .modal-section { margin-bottom: 18px; }
+    .modal-section-title {
+      font-size: .7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .07em; color: var(--muted); margin-bottom: 7px;
+    }
+    .modal-desc {
+      font-size: .85rem; line-height: 1.65; color: var(--text-dim);
+      white-space: pre-wrap; background: rgba(255,255,255,.03);
+      border: 1px solid var(--border); border-radius: var(--rad-sm); padding: 10px 13px;
+    }
+    .modal-desc.empty { color: var(--muted); font-style: italic; }
+
+    .modal-row { display: flex; gap: 20px; flex-wrap: wrap; }
+    .modal-info-item { display: flex; flex-direction: column; gap: 4px; }
+    .modal-info-val { font-size: .87rem; font-weight: 600; color: var(--text); }
+
+    .modal-members { display: flex; flex-wrap: wrap; gap: 8px; }
+    .modal-member {
+      display: flex; align-items: center; gap: 7px;
+      background: rgba(255,255,255,.04); border: 1px solid var(--border);
+      border-radius: 20px; padding: 4px 10px 4px 4px;
+      font-size: .79rem; font-weight: 600; color: var(--text-dim);
+    }
+    .modal-member .avatar { width: 26px; height: 26px; font-size: .67rem; margin: 0; }
+
+    .modal-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: .83rem; font-weight: 600; color: var(--accent);
+      text-decoration: none; margin-top: 4px;
+      transition: color var(--transition);
+    }
+    .modal-link:hover { color: #c4b5fd; text-decoration: underline; }
+
+    /* ── Pipeline button ──────────────────────────────────────── */
+    .btn-pipeline {
+      display: inline-flex; align-items: center; gap: 6px;
+      margin-top: 10px; padding: 7px 12px;
+      background: linear-gradient(135deg, rgba(124,58,237,.8), rgba(167,139,250,.7));
+      border: 1px solid rgba(167,139,250,.3);
+      color: #fff; border-radius: var(--rad-sm);
+      font-size: .74rem; font-weight: 600; cursor: pointer;
+      transition: all var(--transition); width: 100%; justify-content: center;
+      font-family: inherit; backdrop-filter: blur(4px);
+    }
+    .btn-pipeline:hover {
+      background: linear-gradient(135deg, rgba(109,40,217,.9), rgba(139,92,246,.8));
+      box-shadow: 0 0 20px rgba(167,139,250,.3);
+      transform: translateY(-1px);
+    }
+    .btn-pipeline:active { transform: translateY(0); }
+    .btn-pipeline:disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    /* ── Pipeline result ──────────────────────────────────────── */
+    .pipeline-result {
+      margin-top: 8px; padding: 9px 11px;
+      background: rgba(52,211,153,.06);
+      border: 1px solid rgba(52,211,153,.2);
+      border-radius: var(--rad-sm); font-size: .73rem; word-break: break-all;
+    }
+    .pipeline-result-label {
+      font-weight: 700; color: var(--green); margin-bottom: 4px;
+      font-size: .68rem; text-transform: uppercase; letter-spacing: .06em;
+    }
+    .pipeline-result a {
+      color: #6ee7b7; text-decoration: none; font-weight: 600; display: block; line-height: 1.5;
+    }
+    .pipeline-result a:hover { color: var(--green); text-decoration: underline; }
+
+    /* ── Pipeline progress ────────────────────────────────────── */
+    .pipeline-progress-wrap {
+      margin-top: 8px; padding: 9px 11px;
+      background: linear-gradient(135deg, rgba(124,58,237,.25), rgba(56,189,248,.15));
+      border: 1px solid rgba(167,139,250,.25);
+      border-radius: var(--rad-sm); backdrop-filter: blur(4px);
+    }
+    .pipeline-prog-header {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px;
+    }
+    .pipeline-prog-title { font-size: .7rem; font-weight: 600; color: rgba(255,255,255,.8); }
+    .pipeline-prog-pct   { font-size: .7rem; font-weight: 700; color: var(--accent); }
+    .pipeline-prog-bar-bg {
+      height: 3px; background: rgba(255,255,255,.1); border-radius: 2px; overflow: hidden;
+    }
+    .pipeline-prog-bar {
+      height: 100%; width: 0%; border-radius: 2px; transition: width .5s ease;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      box-shadow: 0 0 8px rgba(167,139,250,.6);
+    }
+
+    /* ── Card created badge ───────────────────────────────────── */
+    .card-created-badge {
+      margin-top: 8px; padding: 5px 10px;
+      background: rgba(52,211,153,.08); border: 1px solid rgba(52,211,153,.2);
+      border-radius: var(--rad-sm); font-size: .72rem; font-weight: 700;
+      color: var(--green); display: flex; align-items: center; gap: 5px;
+    }
+
+    /* ── Create card modal ────────────────────────────────────── */
+    #cc-overlay {
+      display: none; position: fixed; inset: 0; z-index: 300;
+      background: rgba(0,0,0,.65); backdrop-filter: blur(8px);
+      align-items: center; justify-content: center;
+    }
+    #cc-overlay.open { display: flex; }
+
+    .cc-modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px; width: 480px;
+      box-shadow: 0 0 0 1px rgba(167,139,250,.08), 0 40px 100px rgba(0,0,0,.6);
+      padding: 32px 34px; position: relative;
+      animation: slideUp .2s ease;
+    }
+    .cc-modal h3 { font-size: .98rem; font-weight: 700; color: var(--text); margin-bottom: 5px; }
+    .cc-modal .cc-subtitle { font-size: .79rem; color: var(--muted); margin-bottom: 22px; line-height: 1.6; }
+
+    .cc-card-preview {
+      background: rgba(255,255,255,.03); border-radius: var(--rad-sm);
+      padding: 10px 14px; margin-bottom: 18px;
+      border-left: 3px solid var(--accent); border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+    }
+    .cc-card-preview .cc-card-name { font-size: .88rem; font-weight: 700; color: var(--text); }
+    .cc-card-preview .cc-card-list { font-size: .73rem; color: var(--muted); margin-top: 3px; }
+
+    .cc-link-preview {
+      background: rgba(52,211,153,.06); border: 1px solid rgba(52,211,153,.2);
+      border-radius: var(--rad-sm); padding: 9px 12px; margin-bottom: 20px;
+      font-size: .76rem; color: #6ee7b7; word-break: break-all; line-height: 1.55;
+    }
+    .cc-link-preview strong {
+      display: block; margin-bottom: 3px; font-size: .68rem;
+      text-transform: uppercase; letter-spacing: .06em; color: var(--green);
+    }
+
+    .cc-selectors { display: flex; flex-direction: column; gap: 14px; margin-bottom: 22px; }
+
+    .cc-actions { display: flex; gap: 10px; }
+    .cc-actions .btn { flex: 1; justify-content: center; }
+    .btn-create {
+      background: linear-gradient(135deg, #7c3aed, #a78bfa); color: #fff;
+      box-shadow: 0 4px 16px rgba(124,58,237,.3);
+    }
+    .btn-create:hover { box-shadow: 0 6px 24px rgba(124,58,237,.5); transform: translateY(-1px); }
+    .btn-create:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    .cc-success { display: none; text-align: center; padding: 16px 0 6px; }
+    .cc-success svg { width: 38px; height: 38px; color: var(--green); margin-bottom: 10px; }
+    .cc-success p { font-size: .9rem; font-weight: 700; color: var(--text); margin-bottom: 14px; }
+    .cc-success a {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--accent); font-size: .83rem; font-weight: 600; text-decoration: none;
+    }
+    .cc-success a:hover { color: #c4b5fd; text-decoration: underline; }
+
+    /* ── Toast ────────────────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%;
+      transform: translateX(-50%) translateY(14px);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text); padding: 10px 20px;
+      border-radius: 10px; font-size: .83rem; font-weight: 500;
+      opacity: 0; pointer-events: none; transition: all .25s ease; z-index: 999;
+      box-shadow: 0 8px 32px rgba(0,0,0,.4), 0 0 0 1px rgba(167,139,250,.1);
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    @media (max-width: 600px) {
+      .auth-card { width: 94vw; padding: 28px 20px; }
+      #topbar { padding: 0 12px; gap: 10px; }
+      #search { width: 130px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Auth overlay ──────────────────────────────────────────── -->
+<div id="auth-overlay">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="lg1" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#7c3aed"/>
+            <stop offset="100%" stop-color="#38bdf8"/>
+          </linearGradient>
+        </defs>
+        <rect width="36" height="36" rx="9" fill="url(#lg1)"/>
+        <rect x="6" y="6" width="10" height="20" rx="3" fill="white" opacity=".95"/>
+        <rect x="20" y="6" width="10" height="13" rx="3" fill="white" opacity=".7"/>
+      </svg>
+      <span class="auth-logo-text">Stinson's Dashboard</span>
+    </div>
+    <h2>Connect your Trello account</h2>
+    <p>
+      Enter your <a href="https://trello.com/power-ups/admin" target="_blank">API Key</a> and
+      <a id="token-link" href="#" target="_blank">Token</a>.
+      Credentials are stored locally in your browser only.
+    </p>
+
+    <div class="field">
+      <label>API Key</label>
+      <input type="text" id="input-key" placeholder="Trello API Key" autocomplete="off" spellcheck="false" />
+    </div>
+    <div class="field">
+      <label>Token</label>
+      <input type="password" id="input-token" placeholder="Trello Token" autocomplete="off" />
+    </div>
+    <button class="btn btn-primary" id="connect-btn">Connect</button>
+  </div>
+</div>
+
+<!-- ── App shell ─────────────────────────────────────────────── -->
+<div id="app" style="display:none">
+
+  <!-- Topbar -->
+  <div id="topbar">
+    <div class="nav-logo">
+      <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="lg2" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#7c3aed"/>
+            <stop offset="100%" stop-color="#38bdf8"/>
+          </linearGradient>
+        </defs>
+        <rect width="36" height="36" rx="9" fill="url(#lg2)"/>
+        <rect x="6" y="6" width="10" height="20" rx="3" fill="white" opacity=".95"/>
+        <rect x="20" y="6" width="10" height="13" rx="3" fill="white" opacity=".7"/>
+      </svg>
+      <span class="nav-logo-text">Stinson's Dashboard</span>
+    </div>
+    <div class="nav-divider"></div>
+
+    <div id="board-select-wrap">
+      <select id="board-select" class="btn btn-ghost" style="cursor:pointer">
+        <option value="">— select a board —</option>
+      </select>
+    </div>
+
+    <div class="spacer"></div>
+
+    <!-- Search -->
+    <div id="search-wrap">
+      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+        <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/>
+      </svg>
+      <input type="text" id="search" placeholder="Search cards…" />
+    </div>
+
+    <!-- Show archived toggle -->
+    <label id="filter-closed-wrap" style="cursor:pointer">
+      <input type="checkbox" id="filter-closed" /> Archived
+    </label>
+
+    <button class="btn btn-ghost btn-sm" id="logout-btn">Sign out</button>
+  </div>
+
+  <!-- Stats bar -->
+  <div id="statsbar">
+    <div class="stat">
+      <div class="stat-dot" style="background:#64748b"></div>
+      <span>Total: <strong id="stat-total">0</strong></span>
+    </div>
+    <div class="stat">
+      <div class="stat-dot" style="background:#f87171"></div>
+      <span>Overdue: <strong id="stat-overdue">0</strong></span>
+    </div>
+    <div class="stat">
+      <div class="stat-dot" style="background:#fbbf24"></div>
+      <span>Due soon: <strong id="stat-soon">0</strong></span>
+    </div>
+    <div class="stat">
+      <div class="stat-dot" style="background:#34d399"></div>
+      <span>Completed: <strong id="stat-done">0</strong></span>
+    </div>
+  </div>
+
+  <!-- Board area -->
+  <div id="board">
+    <div id="placeholder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3">
+        <rect x="3" y="3" width="7" height="18" rx="1.5"/>
+        <rect x="14" y="3" width="7" height="11" rx="1.5"/>
+      </svg>
+      <p>Select a board to get started</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Card detail modal ─────────────────────────────────────── -->
+<div id="modal-overlay">
+  <div class="modal" id="modal">
+    <button class="modal-close" id="modal-close">
+      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+        <path d="M18 6L6 18M6 6l12 12"/>
+      </svg>
+    </button>
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<!-- ── Create Card modal ──────────────────────────────────────── -->
+<div id="cc-overlay">
+  <div class="cc-modal">
+    <button class="modal-close" id="cc-close" style="top:14px;right:14px">
+      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+        <path d="M18 6L6 18M6 6l12 12"/>
+      </svg>
+    </button>
+
+    <div id="cc-form-view">
+      <h3>Create card from pipeline result</h3>
+      <p class="cc-subtitle">A copy of the original card will be created with the new public Drive link added to its description.</p>
+
+      <div class="cc-card-preview">
+        <div class="cc-card-name" id="cc-card-name"></div>
+        <div class="cc-card-list" id="cc-card-list"></div>
+      </div>
+
+      <div class="cc-link-preview">
+        <strong>Public Drive link being added</strong>
+        <span id="cc-link-text"></span>
+      </div>
+
+      <div class="cc-selectors">
+        <div class="field" style="margin:0">
+          <label>Destination Board</label>
+          <select id="cc-board-select">
+            <option value="">— choose a board —</option>
+          </select>
+        </div>
+        <div class="field" style="margin:0">
+          <label>Destination List</label>
+          <select id="cc-list-select" disabled>
+            <option value="">— choose a list —</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="cc-actions">
+        <button class="btn btn-ghost btn-sm" id="cc-cancel">Cancel</button>
+        <button class="btn btn-create btn-sm" id="cc-confirm" disabled>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Create Card
+        </button>
+      </div>
+    </div>
+
+    <div class="cc-success" id="cc-success-view">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/>
+      </svg>
+      <p>Card created successfully!</p>
+      <a id="cc-new-card-link" href="#" target="_blank" rel="noopener">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
+          <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+        </svg>
+        Open new card in Trello
+      </a>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Toast ─────────────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<script>
+/* ─── State ─────────────────────────────────────────────────── */
+let API_KEY = '', TOKEN = '';
+let allCards = [], allLists = [];
+let currentBoardId = '';
+let currentBoardName = '';
+
+const LABEL_COLORS = {
+  green:'#22c55e', yellow:'#f59e0b', orange:'#f97316', red:'#ef4444',
+  purple:'#a855f7', blue:'#3b82f6', sky:'#0ea5e9', lime:'#84cc16',
+  pink:'#ec4899', black:'#374151', null:'#9ca3af', '':'#9ca3af'
+};
+
+/* ─── Helpers ───────────────────────────────────────────────── */
+function $(id) { return document.getElementById(id); }
+
+function toast(msg, dur = 2800) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), dur);
+}
+
+function headers() {
+  return { 'X-Trello-Key': API_KEY, 'X-Trello-Token': TOKEN };
+}
+
+async function apiFetch(url) {
+  const res = await fetch(url, { headers: headers() });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+function dueBadge(card) {
+  if (!card.due) return '';
+  const now = new Date(), due = new Date(card.due);
+  const diff = (due - now) / 3600000; // hours
+  let cls, label;
+  if (card.dueComplete) { cls = 'due-done'; label = 'Done'; }
+  else if (diff < 0)    { cls = 'due-overdue'; label = 'Overdue'; }
+  else if (diff < 48)   { cls = 'due-soon'; label = 'Due soon'; }
+  else                  { cls = 'due-ok'; label = due.toLocaleDateString(); }
+  return `<span class="due-badge ${cls}">
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+    </svg>${label}</span>`;
+}
+
+function labelChips(labels) {
+  if (!labels?.length) return '';
+  return labels.map(l =>
+    `<div class="label-chip" style="background:${LABEL_COLORS[l.color] || '#9ca3af'};flex:0 0 ${Math.max(32, l.name?.length * 7 || 32)}px" title="${l.name || ''}"></div>`
+  ).join('');
+}
+
+function memberAvatars(members) {
+  if (!members?.length) return '';
+  const shown = members.slice(0, 3);
+  return `<div class="member-avatars">${shown.map(m =>
+    `<div class="avatar" title="${m.fullName}">${m.initials?.slice(0,2) || '?'}</div>`
+  ).join('')}${members.length > 3 ? `<div class="avatar">+${members.length-3}</div>` : ''}</div>`;
+}
+
+/* ─── Auth ──────────────────────────────────────────────────── */
+function updateTokenLink() {
+  const key = $('input-key').value.trim();
+  $('token-link').href = key
+    ? `https://trello.com/1/authorize?expiration=never&scope=read,write&response_type=token&key=${key}`
+    : '#';
+}
+$('input-key').addEventListener('input', updateTokenLink);
+
+$('connect-btn').addEventListener('click', async () => {
+  const key = $('input-key').value.trim();
+  const tok = $('input-token').value.trim();
+  if (!key || !tok) { toast('Please enter both API Key and Token'); return; }
+
+  $('connect-btn').disabled = true;
+  $('connect-btn').textContent = 'Connecting…';
+
+  try {
+    API_KEY = key; TOKEN = tok;
+    const boards = await apiFetch('/api/boards');
+    localStorage.setItem('trello_key', key);
+    localStorage.setItem('trello_token', tok);
+    $('auth-overlay').style.display = 'none';
+    $('app').style.display = 'flex';
+    populateBoards(boards);
+    toast('Connected!');
+  } catch(e) {
+    toast('Connection failed — check your credentials');
+    API_KEY = ''; TOKEN = '';
+  } finally {
+    $('connect-btn').disabled = false;
+    $('connect-btn').textContent = 'Connect';
+  }
+});
+
+$('logout-btn').addEventListener('click', () => {
+  localStorage.removeItem('trello_key');
+  localStorage.removeItem('trello_token');
+  API_KEY = TOKEN = '';
+  $('board-select').innerHTML = '<option value="">— select a board —</option>';
+  $('board').innerHTML = `<div id="placeholder">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3">
+      <rect x="3" y="3" width="7" height="18" rx="1.5"/>
+      <rect x="14" y="3" width="7" height="11" rx="1.5"/>
+    </svg><p>Select a board to get started</p></div>`;
+  $('statsbar').style.display = 'none';
+  allCards = []; allLists = [];
+  $('auth-overlay').style.display = 'flex';
+  $('app').style.display = 'none';
+  $('input-key').value = '';
+  $('input-token').value = '';
+});
+
+/* ─── Auto-restore session ──────────────────────────────────── */
+window.addEventListener('DOMContentLoaded', async () => {
+  const key = localStorage.getItem('trello_key');
+  const tok = localStorage.getItem('trello_token');
+  if (key && tok) {
+    API_KEY = key; TOKEN = tok;
+    $('input-key').value = key;
+    $('input-token').value = tok;
+    try {
+      const boards = await apiFetch('/api/boards');
+      $('auth-overlay').style.display = 'none';
+      $('app').style.display = 'flex';
+      populateBoards(boards);
+    } catch { /* invalid saved creds, show auth */ }
+  }
+});
+
+/* ─── Boards ────────────────────────────────────────────────── */
+function populateBoards(boards) {
+  const sel = $('board-select');
+  sel.innerHTML = '<option value="">— select a board —</option>';
+  boards.forEach(b => {
+    const opt = document.createElement('option');
+    opt.value = b.id;
+    opt.textContent = b.name;
+    sel.appendChild(opt);
+  });
+}
+
+$('board-select').addEventListener('change', async e => {
+  const id = e.target.value;
+  if (!id) return;
+  currentBoardId = id;
+  currentBoardName = e.target.options[e.target.selectedIndex].textContent;
+  await loadBoard(id);
+});
+
+$('filter-closed').addEventListener('change', async () => {
+  if (currentBoardId) await loadBoard(currentBoardId);
+});
+
+async function loadBoard(boardId) {
+  const board = $('board');
+  board.innerHTML = `<div id="placeholder"><div class="spinner"></div><p>Loading cards…</p></div>`;
+  $('statsbar').style.display = 'none';
+
+  try {
+    const includeClosed = $('filter-closed').checked;
+    const data = await apiFetch(`/api/boards/${boardId}/cards?include_closed=${includeClosed}`);
+    allCards = data.cards;
+    allLists = data.lists;
+    renderBoard();
+  } catch(e) {
+    board.innerHTML = `<div id="placeholder"><p>Failed to load board. Try again.</p></div>`;
+    toast('Error loading board');
+  }
+}
+
+/* ─── Render ────────────────────────────────────────────────── */
+function renderBoard() {
+  // Stop any active polling timers — they will be restarted by restoreCardState
+  // using fresh DOM references after the board re-renders
+  Object.keys(_pollingTimers).forEach(cid => {
+    const t = _pollingTimers[cid];
+    if (t) { clearInterval(t.animTimer); clearInterval(t.pollTimer); }
+    delete _pollingTimers[cid];
+  });
+
+  const query = $('search').value.trim().toLowerCase();
+  const board = $('board');
+  board.innerHTML = '';
+
+  let totalShown = 0, overdue = 0, soon = 0, done = 0;
+
+  allLists.forEach(list => {
+    const cards = allCards.filter(c => c.idList === list.id);
+    const filtered = cards.filter(c => !query || c.name.toLowerCase().includes(query) || (c.desc || '').toLowerCase().includes(query));
+
+    const col = document.createElement('div');
+    col.className = 'column';
+
+    const visibleCount = filtered.length;
+    col.innerHTML = `
+      <div class="col-header">
+        <span class="col-title">${escHtml(list.name)}</span>
+        <span class="col-count">${visibleCount}</span>
+      </div>
+      <div class="col-body" id="col-${list.id}"></div>`;
+    board.appendChild(col);
+
+    const body = col.querySelector('.col-body');
+
+    filtered.forEach(card => {
+      // Count stats
+      if (card.due) {
+        const now = new Date(), due = new Date(card.due), diff = (due - now) / 3600000;
+        if (card.dueComplete) done++;
+        else if (diff < 0)    overdue++;
+        else if (diff < 48)   soon++;
+      }
+      totalShown++;
+
+      const isRawVideos = list.name.trim().toLowerCase() === 'raw videos'
+                       && !currentBoardName.toLowerCase().includes('edit');
+
+      const el = document.createElement('div');
+      el.className = 'card';
+      el.dataset.id = card.id;
+      el.innerHTML = `
+        ${card.labels?.length ? `<div class="card-labels">${labelChips(card.labels)}</div>` : ''}
+        <div class="card-name">${escHtml(card.name)}</div>
+        <div class="card-meta">
+          ${dueBadge(card)}
+          ${memberAvatars(card.members)}
+        </div>
+        ${isRawVideos ? `<button class="btn-pipeline" data-card-id="${card.id}" data-card-name="${escHtml(card.name)}" onclick="event.stopPropagation(); runPipeline(this)">
+          <svg class="pipeline-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <div class="pipeline-spinner"></div>
+          Run Pipeline
+        </button>` : ''}`;
+      el.addEventListener('click', () => openModal(card));
+      body.appendChild(el);
+      restoreCardState(card.id, el);
+    });
+
+    if (filtered.length === 0) {
+      body.innerHTML = `<div style="text-align:center;padding:16px;font-size:.8rem;color:var(--muted)">No cards</div>`;
+    }
+  });
+
+  // Update stats
+  $('stat-total').textContent = totalShown;
+  $('stat-overdue').textContent = overdue;
+  $('stat-soon').textContent = soon;
+  $('stat-done').textContent = done;
+  $('statsbar').style.display = 'flex';
+
+  if (allLists.length === 0) {
+    board.innerHTML = `<div id="placeholder"><p>No lists found on this board.</p></div>`;
+  }
+}
+
+function updateColCounts() {
+  document.querySelectorAll('.column').forEach(col => {
+    const body  = col.querySelector('.col-body');
+    const count = col.querySelector('.col-count');
+    if (body && count) count.textContent = body.querySelectorAll('.card').length;
+  });
+}
+
+function escHtml(str) {
+  return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ─── Search ────────────────────────────────────────────────── */
+let searchTimer;
+$('search').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(renderBoard, 180);
+});
+
+/* ─── Modal ─────────────────────────────────────────────────── */
+function openModal(card) {
+  const now = new Date();
+  const dueDate = card.due ? new Date(card.due) : null;
+  const dueDiff = dueDate ? (dueDate - now) / 3600000 : null;
+  let dueText = '—', dueCls = '';
+  if (dueDate) {
+    if (card.dueComplete)       { dueText = `${dueDate.toLocaleDateString()} ✓`; dueCls = 'color:#15803d'; }
+    else if (dueDiff < 0)       { dueText = `${dueDate.toLocaleDateString()} · Overdue`; dueCls = 'color:#dc2626'; }
+    else if (dueDiff < 48)      { dueText = `${dueDate.toLocaleDateString()} · Due soon`; dueCls = 'color:#b45309'; }
+    else                        { dueText = dueDate.toLocaleDateString(); }
+  }
+
+  const modalLabels = (card.labels || []).map(l =>
+    `<span class="modal-label" style="background:${LABEL_COLORS[l.color] || '#9ca3af'}">${escHtml(l.name || l.color)}</span>`
+  ).join('');
+
+  const membersList = (card.members || []).map(m =>
+    `<div class="modal-member">
+      <div class="avatar">${escHtml(m.initials?.slice(0,2) || '?')}</div>
+      ${escHtml(m.fullName)}
+    </div>`
+  ).join('');
+
+  $('modal-content').innerHTML = `
+    <div class="modal-list-tag">${escHtml(card.listName || '')}</div>
+    <div class="modal-title">${escHtml(card.name)}</div>
+
+    ${modalLabels ? `<div class="modal-labels">${modalLabels}</div>` : ''}
+
+    <div class="modal-section">
+      <div class="modal-section-title">Description</div>
+      <div class="modal-desc ${card.desc ? '' : 'empty'}">${escHtml(card.desc || 'No description provided.')}</div>
+    </div>
+
+    <div class="modal-row modal-section">
+      <div class="modal-info-item">
+        <div class="modal-section-title">Due Date</div>
+        <div class="modal-info-val" style="${dueCls}">${dueText}</div>
+      </div>
+      ${card.closed ? `<div class="modal-info-item">
+        <div class="modal-section-title">Status</div>
+        <div class="modal-info-val" style="color:var(--muted)">Archived</div>
+      </div>` : ''}
+    </div>
+
+    ${card.members?.length ? `<div class="modal-section">
+      <div class="modal-section-title">Members</div>
+      <div class="modal-members">${membersList}</div>
+    </div>` : ''}
+
+    <a class="modal-link" href="${card.shortUrl || card.url}" target="_blank" rel="noopener">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+        <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
+        <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+      </svg>
+      Open in Trello
+    </a>`;
+
+  $('modal-overlay').classList.add('open');
+}
+
+$('modal-close').addEventListener('click', closeModal);
+$('modal-overlay').addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+function closeModal() { $('modal-overlay').classList.remove('open'); }
+
+/* ─── Pipeline state — localStorage persistence ─────────────── */
+const PS_KEY = 'trello_pipeline_states';
+function psGetAll()           { try { return JSON.parse(localStorage.getItem(PS_KEY) || '{}'); } catch { return {}; } }
+function psGet(cardId)        { return psGetAll()[cardId] || null; }
+function psSet(cardId, state) { const a = psGetAll(); a[cardId] = state; localStorage.setItem(PS_KEY, JSON.stringify(a)); }
+function psClear(cardId)      { const a = psGetAll(); delete a[cardId]; localStorage.setItem(PS_KEY, JSON.stringify(a)); }
+
+/* ─── Progress bar helpers ──────────────────────────────────── */
+function buildProgressBar(cardEl, cardId) {
+  cardEl.querySelector('.pipeline-progress-wrap')?.remove();
+  const wrap = document.createElement('div');
+  wrap.className = 'pipeline-progress-wrap';
+  wrap.innerHTML = `
+    <div class="pipeline-prog-header">
+      <span class="pipeline-prog-title">Running pipeline…</span>
+      <span class="pipeline-prog-pct" id="prog-pct-${cardId}">0%</span>
+    </div>
+    <div class="pipeline-prog-bar-bg">
+      <div class="pipeline-prog-bar" id="prog-bar-${cardId}"></div>
+    </div>`;
+  cardEl.appendChild(wrap);
+  return wrap;
+}
+
+function elapsedToPct(elapsedSec) {
+  if (elapsedSec < 20)  return elapsedSec * 1.5;
+  if (elapsedSec < 60)  return 30 + (elapsedSec - 20);
+  if (elapsedSec < 120) return 70 + (elapsedSec - 60) * 0.33;
+  return Math.min(90 + (elapsedSec - 120) * 0.05, 95);
+}
+
+function setProgBar(cardId, pct, title) {
+  const bar   = document.getElementById(`prog-bar-${cardId}`);
+  const label = document.getElementById(`prog-pct-${cardId}`);
+  if (bar)   bar.style.width = `${pct}%`;
+  if (label) label.textContent = `${Math.floor(pct)}%`;
+  if (title) {
+    const t = document.getElementById(`prog-bar-${cardId}`)
+                       ?.closest('.pipeline-progress-wrap')
+                       ?.querySelector('.pipeline-prog-title');
+    if (t) t.textContent = title;
+  }
+}
+
+/* ─── Show pipeline result block ────────────────────────────── */
+function showPipelineResult(cardEl, cardId, publicUrl) {
+  cardEl.querySelector('.pipeline-progress-wrap')?.remove();
+  cardEl.querySelector('.pipeline-result')?.remove();
+  const runBtn = cardEl.querySelector('.btn-pipeline[data-card-id]');
+  if (runBtn) runBtn.style.display = 'none';
+
+  const resultEl  = document.createElement('div');
+  resultEl.className = 'pipeline-result';
+  resultEl.innerHTML = `
+    <div class="pipeline-result-label">Public Drive link:</div>
+    <a href="${escHtml(publicUrl)}" target="_blank" rel="noopener"
+       onclick="event.stopPropagation()">${escHtml(publicUrl)}</a>`;
+
+  const createBtn = document.createElement('button');
+  createBtn.className = 'btn-pipeline';
+  createBtn.style.cssText = 'margin-top:8px;background:linear-gradient(135deg,#059669,#047857)';
+  createBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2.5">
+    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+  </svg> Create card with this link →`;
+  createBtn.addEventListener('click', e => { e.stopPropagation(); openCreateCard(cardId); });
+  resultEl.appendChild(createBtn);
+  cardEl.appendChild(resultEl);
+}
+
+/* ─── Show "card created" badge ─────────────────────────────── */
+function showCreatedBadge(cardEl) {
+  cardEl.querySelector('.pipeline-result')?.remove();
+  cardEl.querySelectorAll('.btn-pipeline').forEach(b => b.remove());
+  if (!cardEl.querySelector('.card-created-badge')) {
+    const badge = document.createElement('div');
+    badge.className = 'card-created-badge';
+    badge.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2.5">
+      <circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/>
+    </svg> Card created`;
+    cardEl.appendChild(badge);
+  }
+}
+
+/* ─── Polling ────────────────────────────────────────────────── */
+const _pollingTimers = {};
+
+function startPolling(cardId, jobId, cardEl) {
+  if (_pollingTimers[cardId]) return;
+
+  const state   = psGet(cardId) || {};
+  const startTs = state.startedAt || Date.now();
+
+  // Always look up the live DOM element — the original reference goes stale on board switch
+  const liveCard = () => document.querySelector(`.card[data-id="${cardId}"]`);
+
+  const animTimer = setInterval(() => {
+    const el = liveCard();
+    if (el) setProgBar(cardId, elapsedToPct((Date.now() - startTs) / 1000));
+  }, 500);
+
+  const pollTimer = setInterval(async () => {
+    try {
+      const res  = await fetch(`/api/jobs/${jobId}`, { headers: headers() });
+      const data = await res.json();
+
+      if (data.status === 'complete' && data.public_links?.length) {
+        clearInterval(animTimer);
+        clearInterval(pollTimer);
+        delete _pollingTimers[cardId];
+
+        const publicUrl  = data.public_links[0];
+        const sourceCard = allCards.find(c => c.id === cardId) || { id: cardId, name: state.cardName || '' };
+        _pipelineResults[cardId] = { sourceCard, publicUrl };
+        psSet(cardId, { ...psGet(cardId), status: 'complete', publicUrl });
+
+        const el = liveCard();
+        if (el) {
+          setProgBar(cardId, 100, 'Complete!');
+          setTimeout(() => showPipelineResult(liveCard(), cardId, publicUrl), 600);
+        }
+        toast(`Pipeline complete for "${data.card_name || state.cardName}"`);
+
+      } else if (data.status === 'error') {
+        clearInterval(animTimer);
+        clearInterval(pollTimer);
+        delete _pollingTimers[cardId];
+        psClear(cardId);
+
+        const el = liveCard();
+        if (el) {
+          setProgBar(cardId, 100, 'Failed');
+          setTimeout(() => {
+            liveCard()?.querySelector('.pipeline-progress-wrap')?.remove();
+            const btn = liveCard()?.querySelector('.btn-pipeline[data-card-id]');
+            if (btn) btn.style.display = '';
+          }, 800);
+        }
+        toast(data.error || 'Pipeline failed');
+      }
+    } catch { /* network blip — keep polling */ }
+  }, 2500);
+
+  _pollingTimers[cardId] = { animTimer, pollTimer };
+}
+
+/* ─── Restore persisted state onto a rendered card ──────────── */
+function restoreCardState(cardId, cardEl) {
+  const state = psGet(cardId);
+  if (!state) return;
+
+  if (state.status === 'created') {
+    showCreatedBadge(cardEl);
+  } else if (state.status === 'complete' && state.publicUrl) {
+    const sourceCard = allCards.find(c => c.id === cardId) || { id: cardId, name: state.cardName || '' };
+    _pipelineResults[cardId] = { sourceCard, publicUrl: state.publicUrl };
+    showPipelineResult(cardEl, cardId, state.publicUrl);
+  } else if (state.status === 'running' && state.jobId) {
+    const btn = cardEl.querySelector('.btn-pipeline[data-card-id]');
+    if (btn) btn.style.display = 'none';
+    buildProgressBar(cardEl, cardId);
+    startPolling(cardId, state.jobId, cardEl);
+  }
+}
+
+/* ─── Main pipeline entry ───────────────────────────────────── */
+async function runPipeline(btn) {
+  const cardId   = btn.dataset.cardId;
+  const cardName = btn.dataset.cardName;
+  const cardEl   = btn.closest('.card');
+
+  cardEl.querySelector('.pipeline-result')?.remove();
+  btn.style.display = 'none';
+  buildProgressBar(cardEl, cardId);
+
+  try {
+    const res  = await fetch(`/api/pipeline/${cardId}`, {
+      method: 'POST',
+      headers: { ...headers(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ card_name: cardName, board_id: currentBoardId }),
+    });
+    const data = await res.json();
+
+    if (!res.ok || !data.job_id) {
+      cardEl.querySelector('.pipeline-progress-wrap')?.remove();
+      btn.style.display = '';
+      toast(data.error || 'Failed to start pipeline');
+      return;
+    }
+
+    psSet(cardId, { status: 'running', jobId: data.job_id, cardName, startedAt: Date.now() });
+    startPolling(cardId, data.job_id, cardEl);
+
+  } catch {
+    cardEl.querySelector('.pipeline-progress-wrap')?.remove();
+    btn.style.display = '';
+    toast('Pipeline request failed');
+  }
+}
+
+/* ─── Create Card modal ─────────────────────────────────────── */
+let _ccSourceCard  = null;
+let _ccPublicUrl   = '';
+let _ccBoards      = [];
+const _pipelineResults = {};
+
+async function openCreateCard(cardId) {
+  const result = _pipelineResults[cardId];
+  if (!result) { toast('Pipeline data not found — run the pipeline again'); return; }
+  _ccSourceCard = result.sourceCard;
+  _ccPublicUrl  = result.publicUrl;
+
+  // Reset modal to form view
+  $('cc-form-view').style.display = '';
+  $('cc-success-view').style.display = 'none';
+
+  // Populate preview
+  $('cc-card-name').textContent = _ccSourceCard.name || '';
+  $('cc-card-list').textContent = `From: ${_ccSourceCard.listName || ''}`;
+  $('cc-link-text').textContent = _ccPublicUrl;
+
+  // Reset selects
+  const boardSel = $('cc-board-select');
+  const listSel  = $('cc-list-select');
+  boardSel.innerHTML = '<option value="">— choose a board —</option>';
+  listSel.innerHTML  = '<option value="">— choose a list —</option>';
+  listSel.disabled   = true;
+  $('cc-confirm').disabled = true;
+
+  // Load all boards
+  if (_ccBoards.length === 0) {
+    boardSel.innerHTML = '<option value="">Loading boards…</option>';
+    try {
+      _ccBoards = await apiFetch('/api/boards');
+    } catch {
+      toast('Failed to load boards');
+      return;
+    }
+  }
+  boardSel.innerHTML = '<option value="">— choose a board —</option>';
+  _ccBoards.forEach(b => {
+    const opt = document.createElement('option');
+    opt.value = b.id;
+    opt.textContent = b.name;
+    boardSel.appendChild(opt);
+  });
+
+  $('cc-overlay').classList.add('open');
+}
+
+$('cc-board-select').addEventListener('change', async function () {
+  const listSel = $('cc-list-select');
+  $('cc-confirm').disabled = true;
+  listSel.disabled = true;
+  listSel.innerHTML = '<option value="">Loading lists…</option>';
+
+  if (!this.value) {
+    listSel.innerHTML = '<option value="">— choose a list —</option>';
+    return;
+  }
+  try {
+    const lists = await apiFetch(`/api/boards/${this.value}/lists`);
+    listSel.innerHTML = '<option value="">— choose a list —</option>';
+    lists.forEach(l => {
+      const opt = document.createElement('option');
+      opt.value = l.id;
+      opt.textContent = l.name;
+      listSel.appendChild(opt);
+    });
+    listSel.disabled = false;
+  } catch {
+    toast('Failed to load lists');
+    listSel.innerHTML = '<option value="">— failed to load —</option>';
+  }
+});
+
+$('cc-list-select').addEventListener('change', function () {
+  $('cc-confirm').disabled = !this.value;
+});
+
+$('cc-confirm').addEventListener('click', async function () {
+  const listId = $('cc-list-select').value;
+  if (!listId) return;
+
+  this.disabled = true;
+  this.textContent = 'Creating…';
+
+  // Build new description: strip any URLs from the original, then append the new public link
+  const strippedDesc = (_ccSourceCard.desc || '')
+    .replace(/https?:\/\/\S+/g, '')  // remove all http/https links
+    .replace(/\n{3,}/g, '\n\n')       // collapse runs of blank lines left behind
+    .trim();
+  const newDesc = strippedDesc
+    ? `${strippedDesc}\n\n---\nPublic Drive Link: ${_ccPublicUrl}`
+    : `Public Drive Link: ${_ccPublicUrl}`;
+
+  const payload = {
+    idList: listId,
+    name: _ccSourceCard.name,
+    desc: newDesc,
+  };
+  if (_ccSourceCard.due)         payload.due         = _ccSourceCard.due;
+  if (_ccSourceCard.dueComplete) payload.dueComplete = _ccSourceCard.dueComplete;
+
+  try {
+    const res  = await fetch('/api/cards', {
+      method: 'POST',
+      headers: { ...headers(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      // Show success screen in modal
+      $('cc-form-view').style.display = 'none';
+      $('cc-success-view').style.display = 'block';
+      $('cc-new-card-link').href = data.shortUrl || data.url || '#';
+      toast('Card created!');
+
+      // Persist created state so it survives board switches / refresh
+      psSet(_ccSourceCard.id, { status: 'created' });
+
+      // Move original card to the "Editing" list on the same board
+      const editingList = allLists.find(l => l.name.toLowerCase().includes('edit'));
+      const origCardEl  = document.querySelector(`.card[data-id="${_ccSourceCard.id}"]`);
+
+      if (origCardEl) {
+        origCardEl.querySelector('.pipeline-result')?.remove();
+        origCardEl.querySelector('.btn-pipeline')?.remove();
+        const badge = document.createElement('div');
+        badge.className = 'card-created-badge';
+        badge.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/>
+        </svg> Card created`;
+        origCardEl.appendChild(badge);
+      }
+
+      if (editingList) {
+        try {
+          await fetch(`/api/cards/${_ccSourceCard.id}`, {
+            method: 'PATCH',
+            headers: { ...headers(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idList: editingList.id }),
+          });
+
+          // Update allCards state
+          const cardData = allCards.find(c => c.id === _ccSourceCard.id);
+          if (cardData) cardData.idList = editingList.id;
+
+          // Move the card element in the kanban UI
+          if (origCardEl) {
+            const destCol = document.getElementById(`col-${editingList.id}`);
+            if (destCol) {
+              // Remove "No cards" placeholder if present
+              const empty = destCol.querySelector('div[style]');
+              if (empty) empty.remove();
+
+              // Strip the created badge (card is moving columns)
+              origCardEl.querySelector('.card-created-badge')?.remove();
+
+              destCol.appendChild(origCardEl);
+
+              // Update column counts
+              updateColCounts();
+            }
+          }
+
+          toast(`Moved to "${editingList.name}"`);
+        } catch {
+          toast('Card created — but could not move to Editing list');
+        }
+      } else {
+        toast('Card created — no "Editing" list found on this board');
+      }
+    } else {
+      toast(data.error || 'Failed to create card');
+      this.disabled = false;
+      this.textContent = 'Create Card';
+    }
+  } catch {
+    toast('Request failed');
+    this.disabled = false;
+    this.textContent = 'Create Card';
+  }
+});
+
+function closeCreateCard() {
+  $('cc-overlay').classList.remove('open');
+  // Re-enable confirm button for next use
+  const btn = $('cc-confirm');
+  btn.disabled = false;
+  btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+  </svg> Create Card`;
+}
+
+$('cc-close').addEventListener('click', closeCreateCard);
+$('cc-cancel').addEventListener('click', closeCreateCard);
+$('cc-overlay').addEventListener('click', e => { if (e.target === $('cc-overlay')) closeCreateCard(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCreateCard(); });
+</script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+# Credentials and tokens - NEVER commit these
+credentials_source.json
+credentials_dest.json
+token_source.json
+token_dest.json
+*.json
+!vercel.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!next.config.ts
+
+# Next.js
+.next/
+out/
+
+# Node
+node_modules/
+
+# Env files
+.env
+.env.local
+.env*.local
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
