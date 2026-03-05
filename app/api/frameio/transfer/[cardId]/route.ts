@@ -4,6 +4,7 @@ import {
   extractFrameioFileId,
   findFrameioProject,
   getFrameioDownloadUrl,
+  getFrameioDownloadUrlByIdFallback,
   uploadToFrameio,
 } from '@/lib/frameio';
 
@@ -38,6 +39,9 @@ export async function POST(
       fetchTrelloAttachments(apiKey, token, cardId),
     ]);
     const sourceFrameioUrl = findFrameioUrl(card.desc || '', attachments);
+    // #region agent log
+    fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'initial',hypothesisId:'H6',location:'app/api/frameio/transfer/[cardId]/route.ts:POST',message:'Resolved source Frame.io URL candidate',data:{cardId,hasSourceUrl:!!sourceFrameioUrl,sourceUrlPreview:sourceFrameioUrl?sourceFrameioUrl.slice(0,120):null,attachmentCount:attachments.length},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     if (!sourceFrameioUrl) {
       return NextResponse.json(
         { error: 'No Frame.io link found in this card description or attachments.' },
@@ -46,7 +50,24 @@ export async function POST(
     }
 
     const fileId = await extractFrameioFileId(sourceFrameioUrl);
-    const downloadUrl = await getFrameioDownloadUrl(fileId);
+    // #region agent log
+    fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'initial',hypothesisId:'H7',location:'app/api/frameio/transfer/[cardId]/route.ts:POST',message:'Extracted Frame.io file id',data:{cardId,fileIdPreview:fileId.slice(0,8),sourceHost:safeHost(sourceFrameioUrl)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    let downloadUrl = '';
+    try {
+      downloadUrl = await getFrameioDownloadUrl(fileId);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const shouldTryIdFallback = /Failed to fetch Frame\.io file .* \(404\)/i.test(msg);
+      // #region agent log
+      fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'post-fix',hypothesisId:'H11',location:'app/api/frameio/transfer/[cardId]/route.ts:POST',message:'Primary file lookup failed; evaluating id fallback',data:{shouldTryIdFallback,errorPreview:msg.slice(0,180),sourceHost:safeHost(sourceFrameioUrl)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      if (!shouldTryIdFallback) throw err;
+      downloadUrl = await getFrameioDownloadUrlByIdFallback(fileId);
+      // #region agent log
+      fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'post-fix',hypothesisId:'H12',location:'app/api/frameio/transfer/[cardId]/route.ts:POST',message:'Id fallback resolved download URL',data:{sourceHost:safeHost(sourceFrameioUrl),downloadUrlHost:safeHost(downloadUrl)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+    }
 
     const projectName = process.env.FRAMEIO_PROJECT_NAME;
     if (!projectName) {
@@ -71,6 +92,9 @@ export async function POST(
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
+    // #region agent log
+    fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'initial',hypothesisId:'H8',location:'app/api/frameio/transfer/[cardId]/route.ts:POST',message:'Transfer route failed',data:{error:msg.slice(0,300)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
@@ -125,4 +149,12 @@ function firstFrameioMatch(text: string): string | null {
 function sanitizeFileName(name: string): string {
   const safe = name.replace(/[/\\?%*:|"<>]/g, '_').trim();
   return /\.\w{2,5}$/.test(safe) ? safe : `${safe}.mp4`;
+}
+
+function safeHost(url: string): string | null {
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
 }

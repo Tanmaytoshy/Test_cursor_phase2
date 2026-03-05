@@ -135,6 +135,9 @@ function isUuid(value: string): boolean {
  */
 export async function getFrameioDownloadUrl(fileId: string): Promise<string> {
   const accountId = await getFrameioAccountId();
+  // #region agent log
+  fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'initial',hypothesisId:'H9',location:'lib/frameio.ts:getFrameioDownloadUrl',message:'Fetching file download URL from v4 account endpoint',data:{accountIdPreview:accountId.slice(0,8),fileIdPreview:fileId.slice(0,8)},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   const res = await fetch(
     `${FRAMEIO_BASE}/accounts/${accountId}/files/${fileId}?include=media_links.original`,
@@ -143,6 +146,9 @@ export async function getFrameioDownloadUrl(fileId: string): Promise<string> {
 
   if (!res.ok) {
     const text = await res.text();
+    // #region agent log
+    fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'initial',hypothesisId:'H10',location:'lib/frameio.ts:getFrameioDownloadUrl',message:'v4 file lookup failed',data:{status:res.status,errorPreview:text.slice(0,220),fileIdPreview:fileId.slice(0,8)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     throw new Error(
       `Failed to fetch Frame.io file ${fileId} (${res.status}): ${text}`
     );
@@ -162,6 +168,60 @@ export async function getFrameioDownloadUrl(fileId: string): Promise<string> {
   }
 
   return downloadUrl;
+}
+
+/**
+ * Fallback resolution when account-scoped /files/{id} lookup returns 404.
+ * Tries alternate non-account-scoped endpoints with the same asset/file id.
+ */
+export async function getFrameioDownloadUrlByIdFallback(fileId: string): Promise<string> {
+  const endpointCandidates = [
+    { source: 'v4-file', url: `${FRAMEIO_BASE}/files/${fileId}?include=media_links.original` },
+    { source: 'v2-asset', url: `${FRAMEIO_V2_BASE}/assets/${fileId}` },
+  ];
+
+  let lastErr = 'No endpoint attempts executed';
+  for (const candidate of endpointCandidates) {
+    // #region agent log
+    fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'post-fix',hypothesisId:'H15',location:'lib/frameio.ts:getFrameioDownloadUrlByIdFallback',message:'Trying id fallback endpoint',data:{source:candidate.source,fileIdPreview:fileId.slice(0,8)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+
+    const res = await fetch(candidate.url, { headers: await frameioHeaders() });
+    if (!res.ok) {
+      const text = await res.text();
+      lastErr = `${candidate.source}: ${res.status} ${text}`;
+      // #region agent log
+      fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'post-fix',hypothesisId:'H16',location:'lib/frameio.ts:getFrameioDownloadUrlByIdFallback',message:'Id fallback endpoint failed',data:{source:candidate.source,status:res.status,errorPreview:text.slice(0,180)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      continue;
+    }
+
+    const payload = await res.json();
+    const downloadUrl =
+      payload?.data?.media_links?.original?.url ||
+      payload?.data?.original ||
+      payload?.data?.download_url ||
+      payload?.media_links?.original?.url ||
+      payload?.original ||
+      payload?.download_url;
+
+    if (downloadUrl) {
+      // #region agent log
+      fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'post-fix',hypothesisId:'H17',location:'lib/frameio.ts:getFrameioDownloadUrlByIdFallback',message:'Id fallback endpoint produced download URL',data:{source:candidate.source,downloadUrlHost:safeHost(downloadUrl)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      return downloadUrl;
+    }
+  }
+
+  throw new Error(`Could not resolve download URL with id fallback endpoints. Last error: ${lastErr}`);
+}
+
+function safeHost(url: string): string | null {
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
 }
 
 /**
