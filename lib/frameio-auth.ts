@@ -14,6 +14,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { getPublicAppUrl } from '@/lib/app-url';
 
 const DATA_DIR   = path.join(process.cwd(), 'data');
 const TOKENS_FILE = path.join(DATA_DIR, 'tokens.json');
@@ -117,9 +118,9 @@ function getCredentials(): { clientId: string; clientSecret: string } {
 }
 
 function getRedirectUri(): string {
-  const appUrl = process.env.APP_URL;
-  if (!appUrl) throw new Error('APP_URL must be set');
-  return `${appUrl.replace(/\/$/, '')}/api/auth/frameio/callback`;
+  const appUrl = getPublicAppUrl();
+  if (!appUrl) throw new Error('APP_URL (or Vercel public URL) must be set');
+  return `${appUrl}/api/auth/frameio/callback`;
 }
 
 /** Build the Adobe IMS authorization URL to redirect the user to. */

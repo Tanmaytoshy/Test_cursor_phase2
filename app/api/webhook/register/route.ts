@@ -12,19 +12,20 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveTrelloBoards } from '@/lib/trello-boards';
+import { getPublicAppUrl } from '@/lib/app-url';
 
 const TRELLO_BASE = 'https://api.trello.com/1';
 
 export async function POST(request: NextRequest) {
   const apiKey = process.env.TRELLO_KEY;
   const token  = process.env.TRELLO_TOKEN;
-  const appUrl = process.env.APP_URL;
+  const appUrl = getPublicAppUrl(request);
 
   if (!apiKey || !token) {
     return NextResponse.json({ error: 'TRELLO_KEY / TRELLO_TOKEN not set' }, { status: 500 });
   }
   if (!appUrl) {
-    return NextResponse.json({ error: 'APP_URL not set' }, { status: 500 });
+    return NextResponse.json({ error: 'Public APP_URL is not configured' }, { status: 500 });
   }
 
   let editorsBoardId: string;

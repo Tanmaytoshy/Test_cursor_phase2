@@ -5,16 +5,17 @@
  * configuration health for the new Frame.io + Trello automation feature.
  */
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { isFrameioConnected, getFrameioAccountId, hasFrameioAccountId } from '@/lib/frameio-auth';
 import { resolveTrelloBoards } from '@/lib/trello-boards';
+import { getPublicAppUrl } from '@/lib/app-url';
 
 const TRELLO_BASE = 'https://api.trello.com/1';
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const apiKey = process.env.TRELLO_KEY;
   const token  = process.env.TRELLO_TOKEN;
-  const appUrl = process.env.APP_URL;
+  const appUrl = getPublicAppUrl(request);
 
   const frameioConnected = isFrameioConnected();
 
