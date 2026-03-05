@@ -34,6 +34,9 @@ export async function GET(request: NextRequest) {
     const persistenceOk =
       !!issued.refresh_token &&
       persisted.refresh_token === issued.refresh_token;
+    // #region agent log
+    fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'initial',hypothesisId:'H5',location:'app/api/auth/frameio/callback/route.ts:GET',message:'Frame.io callback token persistence check',data:{persistenceOk,issuedHasRefresh:!!issued.refresh_token,persistedHasRefresh:!!persisted.refresh_token,issuedRefreshLen:(issued.refresh_token||'').length,persistedRefreshLen:(persisted.refresh_token||'').length},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     return new NextResponse(successPage({
       persistenceOk,

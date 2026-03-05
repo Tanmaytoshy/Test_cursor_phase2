@@ -18,6 +18,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const appUrl = getPublicAppUrl(request);
 
   const frameioConnected = isFrameioConnected();
+  // #region agent log
+  fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'initial',hypothesisId:'H3',location:'app/api/webhook/status/route.ts:GET',message:'Webhook status frameio pre-check',data:{hasAppUrl:!!appUrl,frameioConnected,hasFrameioAccountEnv:!!process.env.FRAMEIO_ACCOUNT_ID,hasFrameioAccessEnv:!!process.env.FRAMEIO_ACCESS_TOKEN,hasFrameioRefreshEnv:!!process.env.FRAMEIO_REFRESH_TOKEN},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   // Auto-fetch FRAMEIO_ACCOUNT_ID if Frame.io is connected but not yet cached
   let frameioAccountIdOk = !!process.env.FRAMEIO_ACCOUNT_ID || hasFrameioAccountId();
@@ -58,6 +61,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   };
 
   const allConfigured = Object.values(config).every(Boolean);
+  // #region agent log
+  fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'initial',hypothesisId:'H4',location:'app/api/webhook/status/route.ts:GET',message:'Webhook config summary',data:{allConfigured,frameioConnected:config.FRAMEIO_CONNECTED,frameioAccountFlag:config.FRAMEIO_ACCOUNT_ID},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   // If credentials are missing, return config status only
   if (!apiKey || !token) {

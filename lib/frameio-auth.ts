@@ -84,6 +84,10 @@ export function readFrameioTokens(): FrameioTokens {
   if (stored.refresh_token) tokens.refresh_token = stored.refresh_token;
   if (stored.expires_at)    tokens.expires_at    = stored.expires_at;
 
+  // #region agent log
+  fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'initial',hypothesisId:'H1',location:'lib/frameio-auth.ts:readFrameioTokens',message:'Resolved Frame.io token sources',data:{hasEnvAccess:!!process.env.FRAMEIO_ACCESS_TOKEN,hasEnvRefresh:!!process.env.FRAMEIO_REFRESH_TOKEN,hasStoredAccess:!!stored.access_token,hasStoredRefresh:!!stored.refresh_token,resultHasAccess:!!tokens.access_token,resultHasRefresh:!!tokens.refresh_token},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+
   return tokens;
 }
 
@@ -245,7 +249,11 @@ export async function getValidAccessToken(): Promise<string> {
 /** Returns true if Frame.io is connected (has at least a refresh token). */
 export function isFrameioConnected(): boolean {
   const tokens = readFrameioTokens();
-  return !!(tokens.refresh_token || tokens.access_token);
+  const connected = !!(tokens.refresh_token || tokens.access_token);
+  // #region agent log
+  fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'initial',hypothesisId:'H2',location:'lib/frameio-auth.ts:isFrameioConnected',message:'Computed Frame.io connection flag',data:{connected,hasAccess:!!tokens.access_token,hasRefresh:!!tokens.refresh_token},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+  return connected;
 }
 
 const FRAMEIO_ME_URL = 'https://api.frame.io/v2/me';
