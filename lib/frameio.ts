@@ -40,8 +40,8 @@ export async function extractFrameioFileId(url: string): Promise<string> {
   );
   if (nextMatch) return nextMatch[1];
 
-  // Legacy app.frame.io review link → call v2 share endpoint to resolve
-  const reviewMatch = trimmed.match(/app\.frame\.io\/reviews\/([^/?#]+)/i);
+  // Review/share links on any frame.io host → call v2 share endpoint to resolve
+  const reviewMatch = trimmed.match(/(?:app|next)\.frame\.io\/reviews\/([^/?#]+)/i);
   if (reviewMatch) {
     const token = reviewMatch[1];
     return resolveReviewToken(token);
@@ -55,10 +55,35 @@ export async function extractFrameioFileId(url: string): Promise<string> {
     throw new Error(`Could not resolve short Frame.io link: ${trimmed}`);
   }
 
+  // Generic fallback for frame.io URLs:
+  // 1) known UUID query params
+  // 2) any UUID in path segments
+  try {
+    const parsed = new URL(trimmed);
+    const host = parsed.hostname.toLowerCase();
+    const isFrameioHost = host === 'f.io' || host.endsWith('.frame.io');
+
+    if (isFrameioHost) {
+      for (const key of ['id', 'asset_id', 'file_id']) {
+        const candidate = parsed.searchParams.get(key);
+        if (candidate && isUuid(candidate)) return candidate;
+      }
+
+      const pathUuid = parsed.pathname.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+      if (pathUuid) return pathUuid[0];
+    }
+  } catch {
+    // Not a parseable URL; continue to other fallbacks.
+  }
+
   // Raw UUID
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) {
+  if (isUuid(trimmed)) {
     return trimmed;
   }
+
+  // Last fallback: any UUID embedded in the input.
+  const embeddedUuid = trimmed.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  if (embeddedUuid) return embeddedUuid[0];
 
   throw new Error(
     `Unsupported Frame.io URL format: ${trimmed}. ` +
@@ -86,11 +111,22 @@ async function resolveReviewToken(token: string): Promise<string> {
 /** Follow a redirect and return the final URL */
 async function followRedirect(url: string): Promise<string> {
   try {
-    const res = await fetch(url, { method: 'HEAD', redirect: 'follow' });
-    return res.url;
+    const headRes = await fetch(url, { method: 'HEAD', redirect: 'follow' });
+    if (headRes.url && headRes.url !== url) return headRes.url;
+  } catch {
+    // Some providers block HEAD; retry with GET.
+  }
+
+  try {
+    const getRes = await fetch(url, { method: 'GET', redirect: 'follow' });
+    return getRes.url || url;
   } catch {
     return url;
   }
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
 /**

@@ -29,7 +29,7 @@ const TRELLO_BASE = 'https://api.trello.com/1';
 // ── Regex to find Frame.io links in card descriptions ────────────────────────
 // Handles: next.frame.io/..., app.frame.io/..., f.io/...
 const FRAMEIO_URL_RE =
-  /https?:\/\/(?:next\.frame\.io|app\.frame\.io|f\.io)\/[^\s<>"')]+/i;
+  /https?:\/\/(?:(?:[\w-]+\.)?frame\.io|f\.io)\/[^\s<>"')\[\]]+/i;
 
 // ── Trello HEAD verification (required by Trello to activate the webhook) ────
 export async function HEAD() {
@@ -95,7 +95,7 @@ async function runAutomation(editorCardId: string, editorCardName: string): Prom
     console.warn(`[webhook] No Frame.io link found in card "${editorCardName}". Stopping.`);
     return;
   }
-  const frameioUrl = frameMatch[0];
+  const frameioUrl = frameMatch[0].replace(/[)\],.;!?]+$/, '');
   console.log(`[webhook] Found Frame.io URL: ${frameioUrl}`);
 
   // Step 3 — Resolve the file ID and get its download URL

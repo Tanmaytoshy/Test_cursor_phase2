@@ -1358,10 +1358,13 @@ $('cc-confirm').addEventListener('click', async function () {
   this.disabled = true;
   this.textContent = 'Creating…';
 
-  // Build new description: strip any URLs from the original, then append the new public link
+  // Build new description: strip any URLs and Trello smart-link artifacts from
+  // the original, then append the new public link once.
   const strippedDesc = (_ccSourceCard.desc || '')
     .replace(/https?:\/\/\S+/g, '')  // remove all http/https links
-    .replace(/\n{3,}/g, '\n\n')       // collapse runs of blank lines left behind
+    .replace(/^\s*[\[\]]\s*$/gm, '') // remove leftover smart-link bracket lines
+    .replace(/^\s*\(\s*"smartCard-(?:inline|block)"\s*\)\s*$/gim, '') // remove smartCard markers
+    .replace(/\n{3,}/g, '\n\n')      // collapse runs of blank lines left behind
     .trim();
   const newDesc = strippedDesc
     ? `${strippedDesc}\n\n---\nPublic Drive Link: ${_ccPublicUrl}`

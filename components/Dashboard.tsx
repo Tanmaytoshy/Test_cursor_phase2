@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 /* ─── Webhook status types ───────────────────────────────────── */
 interface WebhookConfig {
@@ -27,11 +27,6 @@ interface TrelloCard {
 }
 interface TrelloList { id: string; name: string }
 interface TrelloBoard { id: string; name: string }
-interface PipelineState {
-  status: 'running' | 'complete' | 'error' | 'created';
-  jobId?: string; cardName?: string; startedAt?: number; publicUrl?: string;
-}
-interface PipelineResult { sourceCard: TrelloCard; publicUrl: string }
 
 /* ─── Constants ──────────────────────────────────────────────── */
 const LABEL_COLORS: Record<string, string> = {
@@ -39,28 +34,8 @@ const LABEL_COLORS: Record<string, string> = {
   purple: '#a855f7', blue: '#3b82f6', sky: '#0ea5e9', lime: '#84cc16',
   pink: '#ec4899', black: '#374151', null: '#9ca3af', '': '#9ca3af',
 };
-const PS_KEY = 'trello_pipeline_states';
 
 /* ─── Helpers ────────────────────────────────────────────────── */
-function psGetAll(): Record<string, PipelineState> {
-  try { return JSON.parse(localStorage.getItem(PS_KEY) || '{}'); } catch { return {}; }
-}
-function psGet(id: string) { return psGetAll()[id] || null; }
-function psSet(id: string, s: PipelineState) {
-  const a = psGetAll(); a[id] = s; localStorage.setItem(PS_KEY, JSON.stringify(a));
-}
-function psClear(id: string) {
-  const a = psGetAll(); delete a[id]; localStorage.setItem(PS_KEY, JSON.stringify(a));
-}
-function escHtml(s: string) {
-  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-function elapsedToPct(sec: number) {
-  if (sec < 20)  return sec * 1.5;
-  if (sec < 60)  return 30 + (sec - 20);
-  if (sec < 120) return 70 + (sec - 60) * 0.33;
-  return Math.min(90 + (sec - 120) * 0.05, 95);
-}
 
 /* ─── Logo SVG ───────────────────────────────────────────────── */
 function LogoSvg({ size = 36 }: { size?: number }) {
@@ -94,29 +69,13 @@ export default function Dashboard() {
   const [selectedCard, setSelectedCard]   = useState<TrelloCard | null>(null);
   const [toast, setToast]                 = useState('');
   const [toastKey, setToastKey]           = useState(0);
-
-  // Pipeline state per card
-  const [pipelineStates, setPipelineStates] = useState<Record<string, PipelineState>>({});
-  const [pipelineProgress, setPipelineProgress] = useState<Record<string, number>>({});
-  const pipelineResults = useRef<Record<string, PipelineResult>>({});
-  const pollingTimers   = useRef<Record<string, ReturnType<typeof setInterval>[]>>({});
+  const [processingDoneIds, setProcessingDoneIds] = useState<Record<string, boolean>>({});
 
   // Webhook automation panel
   const [showWebhook, setShowWebhook]       = useState(false);
   const [webhookStatus, setWebhookStatus]   = useState<WebhookStatus | null>(null);
   const [webhookLoading, setWebhookLoading] = useState(false);
   const [webhookAction, setWebhookAction]   = useState<'idle' | 'registering' | 'deleting'>('idle');
-
-  // Create-card modal
-  const [showCC, setShowCC]           = useState(false);
-  const [ccSourceCard, setCcSourceCard] = useState<TrelloCard | null>(null);
-  const [ccPublicUrl, setCcPublicUrl]   = useState('');
-  const [ccBoards, setCcBoards]         = useState<TrelloBoard[]>([]);
-  const [ccBoardId, setCcBoardId]       = useState('');
-  const [ccLists, setCcLists]           = useState<TrelloList[]>([]);
-  const [ccListId, setCcListId]         = useState('');
-  const [ccCreating, setCcCreating]     = useState(false);
-  const [ccSuccessUrl, setCcSuccessUrl] = useState('');
 
   /* Toast helper */
   function showToast(msg: string) {
@@ -216,191 +175,76 @@ export default function Dashboard() {
     else if (diff < 48) statSoon++;
   });
 
-  /* ── Pipeline: start polling ───────────────────────────────── */
-  const startPolling = useCallback((cardId: string, jobId: string, startedAt: number) => {
-    if (pollingTimers.current[cardId]?.length) return;
-
-    const animTimer = setInterval(() => {
-      const pct = elapsedToPct((Date.now() - startedAt) / 1000);
-      setPipelineProgress(prev => ({ ...prev, [cardId]: pct }));
-    }, 500);
-
-    const pollTimer = setInterval(async () => {
-      try {
-        const res  = await fetch(`/api/jobs/${jobId}`);
-        const data = await res.json();
-
-        if (data.status === 'complete' && data.public_links?.length) {
-          clearInterval(animTimer); clearInterval(pollTimer);
-          delete pollingTimers.current[cardId];
-
-          const publicUrl = data.public_links[0];
-          const sourceCard = allCards.find(c => c.id === cardId) || { id: cardId, name: psGet(cardId)?.cardName || '' } as TrelloCard;
-          pipelineResults.current[cardId] = { sourceCard, publicUrl };
-          psSet(cardId, { status: 'complete', publicUrl });
-          setPipelineStates(prev => ({ ...prev, [cardId]: { status: 'complete', publicUrl } }));
-          setPipelineProgress(prev => ({ ...prev, [cardId]: 100 }));
-          showToast(`Pipeline complete for "${data.card_name}"`);
-
-        } else if (data.status === 'error') {
-          clearInterval(animTimer); clearInterval(pollTimer);
-          delete pollingTimers.current[cardId];
-          psClear(cardId);
-          setPipelineStates(prev => { const n = { ...prev }; delete n[cardId]; return n; });
-          setPipelineProgress(prev => { const n = { ...prev }; delete n[cardId]; return n; });
-          showToast(data.error || 'Pipeline failed');
-        }
-      } catch { /* network blip */ }
-    }, 2500);
-
-    pollingTimers.current[cardId] = [animTimer, pollTimer];
-  }, [allCards]);
-
-  /* ── Restore persisted pipeline state on board load ─────────── */
-  useEffect(() => {
-    if (!allCards.length) return;
-    const all = psGetAll();
-    const newStates: Record<string, PipelineState> = {};
-    const newProgress: Record<string, number> = {};
-
-    Object.entries(all).forEach(([cardId, state]) => {
-      if (!allCards.find(c => c.id === cardId)) return;
-      newStates[cardId] = state;
-      if (state.status === 'running' && state.jobId && state.startedAt) {
-        newProgress[cardId] = elapsedToPct((Date.now() - state.startedAt) / 1000);
-        startPolling(cardId, state.jobId, state.startedAt);
-      } else if (state.status === 'complete' && state.publicUrl) {
-        const card = allCards.find(c => c.id === cardId);
-        if (card) pipelineResults.current[cardId] = { sourceCard: card, publicUrl: state.publicUrl! };
-        newProgress[cardId] = 100;
-      }
-    });
-    setPipelineStates(newStates);
-    setPipelineProgress(newProgress);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allCards]);
-
-  /* ── Run pipeline ──────────────────────────────────────────── */
-  async function runPipeline(card: TrelloCard) {
-    const cardId = card.id;
-    const cardName = card.name;
-    const startedAt = Date.now();
-
-    setPipelineStates(prev => ({
-      ...prev,
-      [cardId]: { status: 'running', jobId: '', cardName, startedAt },
-    }));
-    setPipelineProgress(prev => ({ ...prev, [cardId]: 0 }));
+  async function moveCardToDone(card: TrelloCard) {
+    if (processingDoneIds[card.id]) return;
+    setProcessingDoneIds(prev => ({ ...prev, [card.id]: true }));
 
     try {
-      const res  = await fetch(`/api/pipeline/${cardId}`, {
-        method: 'POST',
-        headers: { ...headers(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ card_name: cardName }),
-      });
-      const data = await res.json();
-
-      if (!res.ok || !data.job_id) {
-        setPipelineStates(prev => { const n = { ...prev }; delete n[cardId]; return n; });
-        setPipelineProgress(prev => { const n = { ...prev }; delete n[cardId]; return n; });
-        showToast(data.error || 'Failed to start pipeline');
+      const doneList = allLists.find(l => l.name.trim().toLowerCase() === 'done');
+      if (!doneList) {
+        showToast('Done list not found');
         return;
       }
 
-      psSet(cardId, { status: 'running', jobId: data.job_id, cardName, startedAt });
-      setPipelineStates(prev => ({
-        ...prev,
-        [cardId]: { status: 'running', jobId: data.job_id, cardName, startedAt },
-      }));
-      startPolling(cardId, data.job_id, startedAt);
-    } catch {
-      setPipelineStates(prev => { const n = { ...prev }; delete n[cardId]; return n; });
-      setPipelineProgress(prev => { const n = { ...prev }; delete n[cardId]; return n; });
-      showToast('Pipeline request failed');
-    }
-  }
+      // Step 1: run Frame.io transfer first.
+      const transferRes = await fetch(`/api/frameio/transfer/${card.id}`, {
+        method: 'POST',
+        headers: headers(),
+      });
+      const transferData = await transferRes.json().catch(() => null);
+      if (!transferRes.ok) {
+        throw new Error(transferData?.error || `Frame.io transfer failed (HTTP ${transferRes.status})`);
+      }
 
-  /* ── Open create-card modal ────────────────────────────────── */
-  async function openCreateCard(cardId: string) {
-    const result = pipelineResults.current[cardId];
-    if (!result) { showToast('Pipeline data not found — run pipeline again'); return; }
-    setCcSourceCard(result.sourceCard);
-    setCcPublicUrl(result.publicUrl);
-    setCcBoardId(''); setCcLists([]); setCcListId(''); setCcSuccessUrl(''); setCcCreating(false);
+      const shareLink: string = transferData?.uploaded_frameio_url || '';
+      if (!shareLink) {
+        throw new Error('Frame.io upload completed but no shareable link was returned.');
+      }
 
-    if (ccBoards.length === 0) {
+      // Step 2: only after successful transfer, move card to Done.
+      const moveRes = await fetch(`/api/cards/${card.id}`, {
+        method: 'PATCH',
+        headers: { ...headers(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idList: doneList.id }),
+      });
+      if (!moveRes.ok) throw new Error(`Move failed (HTTP ${moveRes.status})`);
+
+      setAllCards(prev => prev.map(c =>
+        c.id === card.id ? { ...c, idList: doneList.id, listName: doneList.name } : c
+      ));
+      showToast(`Moved to "${doneList.name}"`);
+
       try {
-        const res = await fetch('/api/boards', { headers: headers() });
-        const data = await res.json();
-        setCcBoards(data);
-      } catch { showToast('Failed to load boards'); return; }
-    }
-    setShowCC(true);
-  }
+        await navigator.clipboard.writeText(shareLink);
+      } catch {
+        // Clipboard permissions can fail in some browser contexts.
+      }
 
-  async function handleCcBoardChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const id = e.target.value;
-    setCcBoardId(id); setCcLists([]); setCcListId('');
-    if (!id) return;
-    try {
-      const res = await fetch(`/api/boards/${id}/lists`, { headers: headers() });
-      const data = await res.json();
-      setCcLists(data);
-    } catch { showToast('Failed to load lists'); }
-  }
+      const target = window.prompt(
+        `Share link copied:\n${shareLink}\n\nWhere should I upload this new link? Paste Trello card URL or card ID. Leave empty to skip.`
+      );
 
-  async function handleCreateCard() {
-    if (!ccListId || !ccSourceCard) return;
-    setCcCreating(true);
+      if (!target || !target.trim()) {
+        showToast('Frame.io link ready. Upload skipped for now.');
+        return;
+      }
 
-    const strippedDesc = (ccSourceCard.desc || '')
-      .replace(/https?:\/\/\S+/g, '').replace(/\n{3,}/g, '\n\n').trim();
-    const newDesc = strippedDesc
-      ? `${strippedDesc}\n\n---\nPublic Drive Link: ${ccPublicUrl}`
-      : `Public Drive Link: ${ccPublicUrl}`;
-
-    try {
-      const res = await fetch('/api/cards', {
+      const uploadRes = await fetch('/api/frameio/upload-link', {
         method: 'POST',
         headers: { ...headers(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          idList: ccListId,
-          name: ccSourceCard.name,
-          desc: newDesc,
-          ...(ccSourceCard.due ? { due: ccSourceCard.due } : {}),
-          ...(ccSourceCard.dueComplete != null ? { dueComplete: ccSourceCard.dueComplete } : {}),
-        }),
+        body: JSON.stringify({ target: target.trim(), frameioLink: shareLink }),
       });
-      const data = await res.json();
-
-      if (res.ok) {
-        setCcSuccessUrl(data.shortUrl || data.url || '#');
-        psSet(ccSourceCard.id, { status: 'created' });
-        setPipelineStates(prev => ({ ...prev, [ccSourceCard.id]: { status: 'created' } }));
-        showToast('Card created!');
-
-        // Move original card to "Editing" list if it exists on the same board
-        const editingList = allLists.find(l => l.name.toLowerCase().includes('edit'));
-        if (editingList) {
-          try {
-            await fetch(`/api/cards/${ccSourceCard.id}`, {
-              method: 'PATCH',
-              headers: { ...headers(), 'Content-Type': 'application/json' },
-              body: JSON.stringify({ idList: editingList.id }),
-            });
-            setAllCards(prev => prev.map(c =>
-              c.id === ccSourceCard.id ? { ...c, idList: editingList.id } : c
-            ));
-            showToast(`Moved to "${editingList.name}"`);
-          } catch { showToast('Card created — but could not move to Editing list'); }
-        }
-      } else {
-        showToast(data.error || 'Failed to create card');
+      const uploadData = await uploadRes.json().catch(() => null);
+      if (!uploadRes.ok) {
+        throw new Error(uploadData?.error || `Could not upload link (HTTP ${uploadRes.status})`);
       }
-    } catch {
-      showToast('Request failed');
+
+      showToast(`Uploaded link to "${uploadData?.cardName || 'target card'}"`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast(msg || 'Could not complete Done + Frame.io flow');
     } finally {
-      setCcCreating(false);
+      setProcessingDoneIds(prev => ({ ...prev, [card.id]: false }));
     }
   }
 
@@ -481,10 +325,12 @@ export default function Dashboard() {
     if (next && !webhookStatus) loadWebhookStatus();
   }
 
-  /* ── Is "Raw Videos" list (shows pipeline button) ────────────── */
-  function isRawVideos(list: TrelloList) {
-    return list.name.trim().toLowerCase() === 'raw videos' &&
-      !boardName.toLowerCase().includes('edit');
+  function isDoubleCheck(list: TrelloList) {
+    const normalized = list.name.toLowerCase().replace(/[^a-z]/g, '');
+    return (
+      normalized.includes('doublecheck') ||
+      normalized.includes('doulecheck')
+    );
   }
 
   /* ─────────────────────────────────────────────────────────────
@@ -733,9 +579,7 @@ export default function Dashboard() {
                     </div>
                   )}
                   {list.cards.map(card => {
-                    const ps = pipelineStates[card.id];
-                    const pct = pipelineProgress[card.id] ?? 0;
-                    const showPipeline = isRawVideos(list);
+                    const showDoubleCheckPipeline = isDoubleCheck(list);
 
                     return (
                       <div
@@ -777,60 +621,20 @@ export default function Dashboard() {
                           ) : null}
                         </div>
 
-                        {/* Pipeline UI */}
-                        {showPipeline && (
-                          <>
-                            {!ps && (
-                              <button
-                                className="btn-pipeline"
-                                onClick={e => { e.stopPropagation(); runPipeline(card); }}
-                              >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                  <polygon points="5 3 19 12 5 21 5 3"/>
-                                </svg>
-                                Run Pipeline
-                              </button>
-                            )}
-
-                            {ps?.status === 'running' && (
-                              <div className="pipeline-progress-wrap" onClick={e => e.stopPropagation()}>
-                                <div className="pipeline-prog-header">
-                                  <span className="pipeline-prog-title">Running pipeline…</span>
-                                  <span className="pipeline-prog-pct">{Math.floor(pct)}%</span>
-                                </div>
-                                <div className="pipeline-prog-bar-bg">
-                                  <div className="pipeline-prog-bar" style={{ width: `${pct}%` }} />
-                                </div>
-                              </div>
-                            )}
-
-                            {ps?.status === 'complete' && ps.publicUrl && (
-                              <div className="pipeline-result" onClick={e => e.stopPropagation()}>
-                                <div className="pipeline-result-label">Public Drive link:</div>
-                                <a href={ps.publicUrl} target="_blank" rel="noopener noreferrer">
-                                  {ps.publicUrl}
-                                </a>
-                                <button
-                                  className="btn-create-card"
-                                  onClick={e => { e.stopPropagation(); openCreateCard(card.id); }}
-                                >
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                                  </svg>
-                                  Create card with this link →
-                                </button>
-                              </div>
-                            )}
-
-                            {ps?.status === 'created' && (
-                              <div className="card-created-badge" onClick={e => e.stopPropagation()}>
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                  <circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/>
-                                </svg>
-                                Card created
-                              </div>
-                            )}
-                          </>
+                        {/* Double Check shortcut -> Done */}
+                        {showDoubleCheckPipeline && (
+                          <div className="card-action-row" onClick={e => e.stopPropagation()}>
+                            <button
+                              className="btn-move-done"
+                              disabled={!!processingDoneIds[card.id]}
+                              onClick={() => moveCardToDone(card)}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <path d="M20 6L9 17l-5-5"/>
+                              </svg>
+                              {processingDoneIds[card.id] ? 'Processing…' : 'Move to Done'}
+                            </button>
+                          </div>
                         )}
                       </div>
                     );
@@ -859,93 +663,12 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Create Card modal ───────────────────────────────────── */}
-      {showCC && (
-        <div
-          className="cc-overlay"
-          onClick={e => { if (e.target === e.currentTarget) setShowCC(false); }}
-        >
-          <div className="cc-modal">
-            <button className="modal-close" onClick={() => setShowCC(false)}>
-              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                <path d="M18 6L6 18M6 6l12 12"/>
-              </svg>
-            </button>
-
-            {!ccSuccessUrl ? (
-              <>
-                <h3>Create card from pipeline result</h3>
-                <p className="cc-subtitle">
-                  A copy of the original card will be created with the new public Drive link added to its description.
-                </p>
-                <div className="cc-card-preview">
-                  <div className="cc-card-name">{ccSourceCard?.name}</div>
-                  <div className="cc-card-list">From: {ccSourceCard?.listName}</div>
-                </div>
-                <div className="cc-link-preview">
-                  <strong>Public Drive link being added</strong>
-                  {ccPublicUrl}
-                </div>
-                <div className="cc-selectors">
-                  <div className="field" style={{ margin: 0 }}>
-                    <label>Destination Board</label>
-                    <select value={ccBoardId} onChange={handleCcBoardChange}>
-                      <option value="">— choose a board —</option>
-                      {ccBoards.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </select>
-                  </div>
-                  <div className="field" style={{ margin: 0 }}>
-                    <label>Destination List</label>
-                    <select
-                      value={ccListId}
-                      onChange={e => setCcListId(e.target.value)}
-                      disabled={!ccLists.length}
-                    >
-                      <option value="">— choose a list —</option>
-                      {ccLists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div className="cc-actions">
-                  <button className="btn btn-ghost btn-sm" onClick={() => setShowCC(false)}>Cancel</button>
-                  <button
-                    className="btn btn-confirm btn-sm"
-                    disabled={!ccListId || ccCreating}
-                    onClick={handleCreateCard}
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                    </svg>
-                    {ccCreating ? 'Creating…' : 'Create Card'}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="cc-success">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/>
-                </svg>
-                <p>Card created successfully!</p>
-                <a href={ccSuccessUrl} target="_blank" rel="noopener noreferrer">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
-                    <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
-                  </svg>
-                  Open new card in Trello
-                </a>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* ── Toast ──────────────────────────────────────────────── */}
       <div className={`toast ${toast ? 'show' : ''}`}>{toast}</div>
 
       {/* ── Keyboard close ─────────────────────────────────────── */}
       <KeyboardHandler
         onEscape={() => {
-          if (showCC) { setShowCC(false); return; }
           if (selectedCard) { setSelectedCard(null); return; }
         }}
       />

@@ -248,6 +248,7 @@ export function isFrameioConnected(): boolean {
 }
 
 const FRAMEIO_ME_URL = 'https://api.frame.io/v2/me';
+const FRAMEIO_V4_ACCOUNTS_URL = 'https://api.frame.io/v4/accounts?page_size=1';
 
 /**
  * Returns the Frame.io account ID. Priority: env var → stored (tokens.json) → fetch from API.
@@ -261,21 +262,43 @@ export async function getFrameioAccountId(): Promise<string> {
   if (stored) return stored;
 
   const token = await getValidAccessToken();
-  const res = await fetch(FRAMEIO_ME_URL, {
+  // Primary attempt: legacy v2 /me endpoint.
+  const meRes = await fetch(FRAMEIO_ME_URL, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Frame.io /me failed (${res.status}): ${text}`);
+  if (meRes.ok) {
+    const data = (await meRes.json()) as { account_id?: string };
+    const accountId = data?.account_id;
+    if (accountId) {
+      writeStoredAccountId(accountId);
+      console.log(`[frameio-auth] Auto-fetched and cached FRAMEIO_ACCOUNT_ID via /v2/me: ${accountId}`);
+      return accountId;
+    }
   }
-  const data = (await res.json()) as { account_id?: string };
-  const accountId = data?.account_id;
-  if (!accountId) {
-    throw new Error('Frame.io /me response missing account_id');
+
+  // Fallback: v4 accounts listing. Some tokens can access v4 but not v2 /me.
+  const accountsRes = await fetch(FRAMEIO_V4_ACCOUNTS_URL, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (accountsRes.ok) {
+    const body = (await accountsRes.json()) as { data?: Array<{ id?: string }> };
+    const accountId = body?.data?.[0]?.id;
+    if (accountId) {
+      writeStoredAccountId(accountId);
+      console.log(`[frameio-auth] Auto-fetched and cached FRAMEIO_ACCOUNT_ID via /v4/accounts: ${accountId}`);
+      return accountId;
+    }
+    throw new Error('Frame.io /v4/accounts response missing account id');
   }
-  writeStoredAccountId(accountId);
-  console.log(`[frameio-auth] Auto-fetched and cached FRAMEIO_ACCOUNT_ID: ${accountId}`);
-  return accountId;
+
+  const meText = await meRes.text().catch(() => '');
+  const accountsText = await accountsRes.text().catch(() => '');
+  throw new Error(
+    `Frame.io account lookup failed. ` +
+    `/v2/me: ${meRes.status} ${meText || '(no body)'}; ` +
+    `/v4/accounts: ${accountsRes.status} ${accountsText || '(no body)'}. ` +
+    `Reconnect Frame.io from Automation if this persists.`
+  );
 }
 
 /** Returns true if we have or can resolve FRAMEIO_ACCOUNT_ID (sync check only). */

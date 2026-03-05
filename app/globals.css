@@ -335,6 +335,34 @@ select option { background: #1e293b; color: var(--text); }
 }
 .btn-pipeline:disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; }
 
+/* Per-card action for Double Check list */
+.card-action-row {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+.btn-move-done {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--rad-sm);
+  border: 1px solid rgba(52,211,153,.28);
+  background: linear-gradient(135deg, rgba(5,150,105,.24), rgba(4,120,87,.22));
+  color: #6ee7b7;
+  font-size: .74rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition);
+  font-family: inherit;
+}
+.btn-move-done:hover {
+  border-color: rgba(52,211,153,.45);
+  color: #a7f3d0;
+  box-shadow: 0 0 0 1px rgba(52,211,153,.15), 0 0 18px rgba(52,211,153,.18);
+  transform: translateY(-1px);
+}
+.btn-move-done:active { transform: translateY(0); }
+
 /* ── Pipeline progress ────────────────────────────────────────── */
 .pipeline-progress-wrap {
   margin-top: 8px; padding: 9px 11px;
