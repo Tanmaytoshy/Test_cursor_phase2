@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { exchangeCodeForTokens } from '@/lib/frameio-auth';
+import { exchangeCodeForTokens, readFrameioTokens } from '@/lib/frameio-auth';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -29,8 +29,17 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await exchangeCodeForTokens(code);
-    return new NextResponse(successPage(), {
+    const issued = await exchangeCodeForTokens(code);
+    const persisted = readFrameioTokens();
+    const persistenceOk =
+      !!issued.refresh_token &&
+      persisted.refresh_token === issued.refresh_token;
+
+    return new NextResponse(successPage({
+      persistenceOk,
+      accessToken: issued.access_token || '',
+      refreshToken: issued.refresh_token || '',
+    }), {
       status: 200,
       headers: { 'Content-Type': 'text/html' },
     });
@@ -43,7 +52,14 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function successPage(): string {
+function successPage(params: {
+  persistenceOk: boolean;
+  accessToken: string;
+  refreshToken: string;
+}): string {
+  const { persistenceOk, accessToken, refreshToken } = params;
+  const needsManualEnv = !persistenceOk;
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -52,19 +68,43 @@ function successPage(): string {
     body { font-family: system-ui, sans-serif; background: #080b12; color: #e2e8f0;
            display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
     .card { background: #111827; border: 1px solid rgba(255,255,255,.07); border-radius: 16px;
-            padding: 40px 48px; text-align: center; max-width: 400px; }
+            padding: 32px 34px; text-align: center; max-width: 720px; }
     .icon { font-size: 3rem; margin-bottom: 16px; }
     h2 { font-size: 1.2rem; font-weight: 700; margin-bottom: 10px; color: #34d399; }
     p { font-size: .88rem; color: #94a3b8; line-height: 1.6; margin-bottom: 20px; }
     a { color: #a78bfa; font-size: .84rem; text-decoration: none; font-weight: 600; }
     a:hover { text-decoration: underline; }
+    .warn {
+      text-align: left; margin: 18px 0 16px;
+      border: 1px solid rgba(251,191,36,.3); border-radius: 12px;
+      background: rgba(251,191,36,.08); padding: 12px 14px;
+      color: #fde68a; font-size: .82rem; line-height: 1.55;
+    }
+    .token-block {
+      text-align: left; margin-top: 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: .75rem; white-space: pre-wrap; word-break: break-all;
+      background: rgba(2,6,23,.65); border: 1px solid rgba(255,255,255,.09);
+      border-radius: 10px; padding: 10px 11px; color: #e2e8f0;
+    }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="icon">✓</div>
     <h2>Frame.io Connected!</h2>
-    <p>Your Frame.io account is now linked. You can close this tab and return to the dashboard.</p>
+    <p>Your Frame.io OAuth authorization succeeded.</p>
+    ${needsManualEnv ? `
+      <div class="warn">
+        This environment cannot persist tokens to the local filesystem (common on Vercel serverless).
+        <br/><br/>
+        Add these in Vercel Project Settings → Environment Variables, redeploy, and then refresh the dashboard:
+        <div class="token-block">FRAMEIO_ACCESS_TOKEN=${escapeHtml(accessToken)}
+FRAMEIO_REFRESH_TOKEN=${escapeHtml(refreshToken)}</div>
+      </div>
+    ` : `
+      <p>Tokens were saved successfully. You can close this tab and return to the dashboard.</p>
+    `}
     <a href="/">← Back to Dashboard</a>
   </div>
   <script>
@@ -76,6 +116,15 @@ function successPage(): string {
   </script>
 </body>
 </html>`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function errorPage(message: string): string {
