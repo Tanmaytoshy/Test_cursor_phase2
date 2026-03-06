@@ -175,7 +175,7 @@ export async function getFrameioDownloadUrl(fileId: string): Promise<string> {
  * Tries alternate non-account-scoped endpoints with the same asset/file id.
  */
 export async function getFrameioDownloadUrlByIdFallback(fileId: string): Promise<string> {
-  const endpointCandidates = [
+  const endpointCandidates: Array<{ source: string; url: string }> = [
     { source: 'v2-asset', url: `${FRAMEIO_V2_BASE}/assets/${fileId}` },
   ];
 
@@ -240,47 +240,53 @@ export async function findFrameioProject(
   projectName: string
 ): Promise<{ project_id: string; root_folder_id: string }> {
   const accountId = await getFrameioAccountId();
+  const endpointCandidates = [
+    `${FRAMEIO_BASE}/projects`,
+    `${FRAMEIO_BASE}/teams/${accountId}/projects`,
+    `${FRAMEIO_BASE}/accounts/${accountId}/projects`,
+  ];
 
-  // Paginate if needed
-  let after: string | null = null;
-  do {
-    const reqUrl: string =
-      `${FRAMEIO_BASE}/accounts/${accountId}/projects?page_size=50` +
-      (after ? `&after=${after}` : '');
-
-    const res = await fetch(reqUrl, { headers: await frameioHeaders() });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Failed to list Frame.io projects (${res.status}): ${text}`);
-    }
-
-    const body = await res.json();
-    const projects: Array<{
-      id: string;
-      name: string;
-      root_asset_id?: string;
-      root_folder_id?: string;
-    }> = body?.data ?? [];
-
-    const match = projects.find(
-      (p) => p.name.toLowerCase() === projectName.toLowerCase()
-    );
-
-    if (match) {
-      const rootFolderId = match.root_folder_id || match.root_asset_id;
-      if (!rootFolderId) {
-        throw new Error(
-          `Project "${projectName}" found but has no root_folder_id/root_asset_id`
-        );
+  const errors: string[] = [];
+  for (const base of endpointCandidates) {
+    // Paginate if the endpoint supports it.
+    let after: string | null = null;
+    do {
+      const reqUrl: string = `${base}?page_size=50${after ? `&after=${after}` : ''}`;
+      const res: Response = await fetch(reqUrl, { headers: await frameioHeaders() });
+      if (!res.ok) {
+        const text = await res.text();
+        errors.push(`${base}: ${res.status} ${text}`);
+        break;
       }
-      return { project_id: match.id, root_folder_id: rootFolderId };
-    }
 
-    after = body?.links?.next ? extractAfterCursor(body.links.next) : null;
-  } while (after);
+      const body: any = await res.json();
+      const projects: Array<{
+        id: string;
+        name: string;
+        root_asset_id?: string;
+        root_folder_id?: string;
+      }> = body?.data ?? [];
+
+      const match = projects.find(
+        (p) => p.name.toLowerCase() === projectName.toLowerCase()
+      );
+
+      if (match) {
+        const rootFolderId = match.root_folder_id || match.root_asset_id;
+        if (!rootFolderId) {
+          throw new Error(
+            `Project "${projectName}" found but has no root_folder_id/root_asset_id`
+          );
+        }
+        return { project_id: match.id, root_folder_id: rootFolderId };
+      }
+
+      after = body?.links?.next ? extractAfterCursor(body.links.next) : null;
+    } while (after);
+  }
 
   throw new Error(
-    `Frame.io project "${projectName}" not found in account ${accountId}`
+    `Frame.io project "${projectName}" not found. Endpoint attempts: ${errors.join(' | ')}`
   );
 }
 
@@ -307,10 +313,15 @@ export async function uploadToFrameio(params: {
   accountId?: string;
 }): Promise<{ file_id: string; view_url: string }> {
   const accountId = params.accountId || await getFrameioAccountId();
-
-  const res = await fetch(
+  const endpointCandidates = [
+    `${FRAMEIO_BASE}/folders/${params.parentFolderId}/files`,
+    `${FRAMEIO_BASE}/teams/${accountId}/folders/${params.parentFolderId}/files`,
     `${FRAMEIO_BASE}/accounts/${accountId}/folders/${params.parentFolderId}/files`,
-    {
+  ];
+
+  const errors: string[] = [];
+  for (const endpoint of endpointCandidates) {
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: await frameioHeaders(),
       body: JSON.stringify({
@@ -319,24 +330,27 @@ export async function uploadToFrameio(params: {
           source_url: params.sourceUrl,
         },
       }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      errors.push(`${endpoint}: ${res.status} ${text}`);
+      continue;
     }
-  );
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Frame.io upload failed (${res.status}): ${text}`);
+    const body = await res.json();
+    const file = body?.data;
+
+    if (!file?.id) {
+      throw new Error('Frame.io upload response missing file ID');
+    }
+
+    const viewUrl =
+      file.view_url ||
+      `https://next.frame.io/project/${file.project_id}/view/${file.id}`;
+
+    return { file_id: file.id, view_url: viewUrl };
   }
 
-  const body = await res.json();
-  const file = body?.data;
-
-  if (!file?.id) {
-    throw new Error('Frame.io upload response missing file ID');
-  }
-
-  const viewUrl =
-    file.view_url ||
-    `https://next.frame.io/project/${file.project_id}/view/${file.id}`;
-
-  return { file_id: file.id, view_url: viewUrl };
+  throw new Error(`Frame.io upload failed. Endpoint attempts: ${errors.join(' | ')}`);
 }
