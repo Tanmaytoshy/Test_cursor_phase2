@@ -233,6 +233,23 @@ export async function resolveFrameioPublicSourceUrl(url: string): Promise<string
 }
 
 /**
+ * Resolve upload target folder.
+ * Prefer explicit FRAMEIO_FOLDER_ID to avoid project listing API differences.
+ */
+export async function resolveFrameioTargetFolderId(projectName?: string): Promise<string> {
+  const explicitFolderId = process.env.FRAMEIO_FOLDER_ID?.trim();
+  if (explicitFolderId) return explicitFolderId;
+
+  const desiredProjectName = (projectName || process.env.FRAMEIO_PROJECT_NAME || '').trim();
+  if (!desiredProjectName) {
+    throw new Error('Set FRAMEIO_FOLDER_ID or FRAMEIO_PROJECT_NAME');
+  }
+
+  const { root_folder_id } = await findFrameioProject(desiredProjectName);
+  return root_folder_id;
+}
+
+/**
  * Find a Frame.io project by name and return its { project_id, root_folder_id }.
  * Searches through all projects in the account.
  */

@@ -52,7 +52,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // Account ID is auto-resolved from Frame.io once OAuth is connected.
     // Keep this green when connected so webhook registration is not blocked.
     FRAMEIO_ACCOUNT_ID:       frameioAccountIdOk || frameioConnected,
-    FRAMEIO_PROJECT_NAME:     !!process.env.FRAMEIO_PROJECT_NAME,
+    FRAMEIO_PROJECT_NAME:     !!process.env.FRAMEIO_PROJECT_NAME || !!process.env.FRAMEIO_FOLDER_ID,
+    FRAMEIO_FOLDER_ID:        !!process.env.FRAMEIO_FOLDER_ID,
     FRAMEIO_CONNECTED:        frameioConnected,
     EDITORS_TRELLO_BOARD_ID:  !!(process.env.EDITORS_TRELLO_BOARD_ID || resolvedBoards?.editorsBoardId),
     CLIENT_TRELLO_BOARD_ID:   !!(process.env.CLIENT_TRELLO_BOARD_ID  || resolvedBoards?.clientBoardId),

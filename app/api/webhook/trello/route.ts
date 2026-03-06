@@ -19,7 +19,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   extractFrameioFileId,
   getFrameioDownloadUrl,
-  findFrameioProject,
+  resolveFrameioTargetFolderId,
   uploadToFrameio,
 } from '@/lib/frameio';
 import { resolveTrelloBoards } from '@/lib/trello-boards';
@@ -106,18 +106,15 @@ async function runAutomation(editorCardId: string, editorCardName: string): Prom
   console.log(`[webhook] Got download URL (length ${downloadUrl.length})`);
 
   // Step 4 — Find the target Frame.io project and root folder
-  const projectName = process.env.FRAMEIO_PROJECT_NAME;
-  if (!projectName) throw new Error('FRAMEIO_PROJECT_NAME is not set');
-
-  const { root_folder_id } = await findFrameioProject(projectName);
-  console.log(`[webhook] Found project "${projectName}", root folder: ${root_folder_id}`);
+  const rootFolderId = await resolveFrameioTargetFolderId();
+  console.log(`[webhook] Resolved target Frame.io folder: ${rootFolderId}`);
 
   // Step 5 — Remote-upload to Frame.io (Frame.io fetches from downloadUrl directly)
   const safeFileName = sanitizeFileName(editorCardName);
   const { view_url: newFrameioUrl } = await uploadToFrameio({
     fileName: safeFileName,
     sourceUrl: downloadUrl,
-    parentFolderId: root_folder_id,
+    parentFolderId: rootFolderId,
   });
   console.log(`[webhook] Uploaded to Frame.io. New URL: ${newFrameioUrl}`);
 

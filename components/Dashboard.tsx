@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 interface WebhookConfig {
   TRELLO_KEY: boolean; TRELLO_TOKEN: boolean; APP_URL: boolean;
   FRAMEIO_CLIENT_ID: boolean; FRAMEIO_CLIENT_SECRET: boolean;
-  FRAMEIO_ACCOUNT_ID: boolean; FRAMEIO_PROJECT_NAME: boolean;
+  FRAMEIO_ACCOUNT_ID: boolean; FRAMEIO_PROJECT_NAME: boolean; FRAMEIO_FOLDER_ID: boolean;
   FRAMEIO_CONNECTED: boolean;
   EDITORS_TRELLO_BOARD_ID: boolean; CLIENT_TRELLO_BOARD_ID: boolean;
   DONE_LIST_NAME: boolean; DOUBLE_CHECK_LIST_NAME: boolean;

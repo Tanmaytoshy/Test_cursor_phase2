@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getTrelloCredentials } from '@/lib/trello-auth';
 import {
   extractFrameioFileId,
-  findFrameioProject,
   getFrameioDownloadUrl,
   getFrameioDownloadUrlByIdFallback,
+  resolveFrameioTargetFolderId,
   resolveFrameioPublicSourceUrl,
   uploadToFrameio,
 } from '@/lib/frameio';
@@ -78,19 +78,11 @@ export async function POST(
       }
     }
 
-    const projectName = process.env.FRAMEIO_PROJECT_NAME;
-    if (!projectName) {
-      return NextResponse.json(
-        { error: 'FRAMEIO_PROJECT_NAME is not set.' },
-        { status: 500 }
-      );
-    }
-
-    const { root_folder_id } = await findFrameioProject(projectName);
+    const targetFolderId = await resolveFrameioTargetFolderId();
     const uploaded = await uploadToFrameio({
       fileName: sanitizeFileName(card.name || 'uploaded-file'),
       sourceUrl: downloadUrl,
-      parentFolderId: root_folder_id,
+      parentFolderId: targetFolderId,
     });
 
     return NextResponse.json({
