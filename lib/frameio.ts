@@ -365,64 +365,33 @@ export async function uploadToFrameio(params: {
   accountId?: string;
 }): Promise<{ file_id: string; view_url: string }> {
   const accountId = params.accountId || await getFrameioAccountId();
-  const endpointCandidates: Array<{
-    url: string;
-    extraHeaders?: Record<string, string>;
-    body: Record<string, unknown>;
-  }> = [
-    // New remote upload endpoint.
-    {
-      url: `${FRAMEIO_BASE}/accounts/${accountId}/folders/${params.parentFolderId}/files/remote_upload`,
-      body: {
-        data: {
-          name: params.fileName,
-          source_url: params.sourceUrl,
-        },
+  const endpoint = `${FRAMEIO_BASE}/accounts/${accountId}/folders/${params.parentFolderId}/files/remote_upload`;
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: await frameioHeaders(),
+    body: JSON.stringify({
+      data: {
+        name: params.fileName,
+        source_url: params.sourceUrl,
       },
-    },
-    // Some tenants still require explicit API version for this endpoint.
-    {
-      url: `${FRAMEIO_BASE}/accounts/${accountId}/folders/${params.parentFolderId}/files/remote_upload`,
-      extraHeaders: { 'api-version': 'experimental' },
-      body: {
-        data: {
-          name: params.fileName,
-          source_url: params.sourceUrl,
-        },
-      },
-    },
-  ];
+    }),
+  });
 
-  const errors: string[] = [];
-  for (const candidate of endpointCandidates) {
-    const res = await fetch(candidate.url, {
-      method: 'POST',
-      headers: {
-        ...(await frameioHeaders()),
-        ...(candidate.extraHeaders || {}),
-      },
-      body: JSON.stringify(candidate.body),
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      errors.push(`${candidate.url}: ${res.status} ${text}`);
-      continue;
-    }
-
-    const body = await res.json();
-    const file = body?.data;
-
-    if (!file?.id) {
-      throw new Error('Frame.io upload response missing file ID');
-    }
-
-    const viewUrl =
-      file.view_url ||
-      `https://next.frame.io/project/${file.project_id}/view/${file.id}`;
-
-    return { file_id: file.id, view_url: viewUrl };
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Frame.io upload failed (${res.status}) at ${endpoint}: ${text}`);
   }
 
-  throw new Error(`Frame.io upload failed. Endpoint attempts: ${errors.join(' | ')}`);
+  // Spec: this endpoint responds with 202 Accepted.
+  const body = await res.json();
+  const file = body?.data;
+  if (!file?.id) {
+    throw new Error('Frame.io remote upload accepted but response is missing file ID');
+  }
+
+  const viewUrl =
+    file.view_url ||
+    `https://next.frame.io/project/${file.project_id}/view/${file.id}`;
+
+  return { file_id: file.id, view_url: viewUrl };
 }
