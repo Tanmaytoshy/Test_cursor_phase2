@@ -339,28 +339,48 @@ export async function uploadToFrameio(params: {
   accountId?: string;
 }): Promise<{ file_id: string; view_url: string }> {
   const accountId = params.accountId || await getFrameioAccountId();
-  const endpointCandidates = [
-    `${FRAMEIO_BASE}/folders/${params.parentFolderId}/files`,
-    `${FRAMEIO_BASE}/teams/${accountId}/folders/${params.parentFolderId}/files`,
-    `${FRAMEIO_BASE}/accounts/${accountId}/folders/${params.parentFolderId}/files`,
-  ];
-
-  const errors: string[] = [];
-  for (const endpoint of endpointCandidates) {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: await frameioHeaders(),
-      body: JSON.stringify({
+  const endpointCandidates: Array<{
+    url: string;
+    extraHeaders?: Record<string, string>;
+    body: Record<string, unknown>;
+  }> = [
+    // New remote upload endpoint.
+    {
+      url: `${FRAMEIO_BASE}/accounts/${accountId}/folders/${params.parentFolderId}/files/remote_upload`,
+      body: {
         data: {
           name: params.fileName,
           source_url: params.sourceUrl,
         },
-      }),
+      },
+    },
+    // Some tenants still require explicit API version for this endpoint.
+    {
+      url: `${FRAMEIO_BASE}/accounts/${accountId}/folders/${params.parentFolderId}/files/remote_upload`,
+      extraHeaders: { 'api-version': 'experimental' },
+      body: {
+        data: {
+          name: params.fileName,
+          source_url: params.sourceUrl,
+        },
+      },
+    },
+  ];
+
+  const errors: string[] = [];
+  for (const candidate of endpointCandidates) {
+    const res = await fetch(candidate.url, {
+      method: 'POST',
+      headers: {
+        ...(await frameioHeaders()),
+        ...(candidate.extraHeaders || {}),
+      },
+      body: JSON.stringify(candidate.body),
     });
 
     if (!res.ok) {
       const text = await res.text();
-      errors.push(`${endpoint}: ${res.status} ${text}`);
+      errors.push(`${candidate.url}: ${res.status} ${text}`);
       continue;
     }
 
