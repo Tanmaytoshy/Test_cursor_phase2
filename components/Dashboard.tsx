@@ -70,6 +70,13 @@ export default function Dashboard() {
   const [toast, setToast]                 = useState('');
   const [toastKey, setToastKey]           = useState(0);
   const [processingDoneIds, setProcessingDoneIds] = useState<Record<string, boolean>>({});
+  const [showFrameioPicker, setShowFrameioPicker] = useState(false);
+  const [frameioShareLink, setFrameioShareLink] = useState('');
+  const [pickerBoardId, setPickerBoardId] = useState('');
+  const [pickerCardId, setPickerCardId] = useState('');
+  const [pickerCards, setPickerCards] = useState<TrelloCard[]>([]);
+  const [pickerLoadingCards, setPickerLoadingCards] = useState(false);
+  const [pickerSubmitting, setPickerSubmitting] = useState(false);
 
   // Webhook automation panel
   const [showWebhook, setShowWebhook]       = useState(false);
@@ -220,26 +227,7 @@ export default function Dashboard() {
         // Clipboard permissions can fail in some browser contexts.
       }
 
-      const target = window.prompt(
-        `Share link copied:\n${shareLink}\n\nWhere should I upload this new link? Paste Trello card URL or card ID. Leave empty to skip.`
-      );
-
-      if (!target || !target.trim()) {
-        showToast('Frame.io link ready. Upload skipped for now.');
-        return;
-      }
-
-      const uploadRes = await fetch('/api/frameio/upload-link', {
-        method: 'POST',
-        headers: { ...headers(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target: target.trim(), frameioLink: shareLink }),
-      });
-      const uploadData = await uploadRes.json().catch(() => null);
-      if (!uploadRes.ok) {
-        throw new Error(uploadData?.error || `Could not upload link (HTTP ${uploadRes.status})`);
-      }
-
-      showToast(`Uploaded link to "${uploadData?.cardName || 'target card'}"`);
+      await openFrameioPicker(shareLink);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast(msg || 'Could not complete Done + Frame.io flow');
@@ -331,6 +319,80 @@ export default function Dashboard() {
       normalized.includes('doublecheck') ||
       normalized.includes('doulecheck')
     );
+  }
+
+  async function loadPickerCards(nextBoardId: string) {
+    if (!nextBoardId) {
+      setPickerCards([]);
+      return;
+    }
+
+    setPickerLoadingCards(true);
+    setPickerCardId('');
+    try {
+      const res = await fetch(`/api/boards/${nextBoardId}/cards?include_closed=true`, { headers: headers() });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const cards: TrelloCard[] = Array.isArray(data?.cards) ? data.cards : [];
+      const sortedCards = [...cards].sort((a, b) => a.name.localeCompare(b.name));
+      setPickerCards(sortedCards);
+    } catch {
+      setPickerCards([]);
+      showToast('Could not load cards for selected board');
+    } finally {
+      setPickerLoadingCards(false);
+    }
+  }
+
+  async function openFrameioPicker(shareLink: string) {
+    setFrameioShareLink(shareLink);
+    setShowFrameioPicker(true);
+
+    const defaultBoardId = boardId || boards[0]?.id || '';
+    setPickerBoardId(defaultBoardId);
+    await loadPickerCards(defaultBoardId);
+  }
+
+  async function handleConfirmFrameioUpload() {
+    if (!frameioShareLink) return;
+    if (!pickerBoardId || !pickerCardId) {
+      showToast('Please select both board and card');
+      return;
+    }
+
+    const selectedBoard = boards.find((b) => b.id === pickerBoardId);
+    const selectedCard = pickerCards.find((c) => c.id === pickerCardId);
+    if (!selectedBoard || !selectedCard) {
+      showToast('Invalid board/card selection');
+      return;
+    }
+
+    setPickerSubmitting(true);
+    try {
+      const uploadRes = await fetch('/api/frameio/upload-link', {
+        method: 'POST',
+        headers: { ...headers(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetBoardName: selectedBoard.name,
+          targetCardName: selectedCard.name,
+          frameioLink: frameioShareLink,
+        }),
+      });
+      const uploadData = await uploadRes.json().catch(() => null);
+      if (!uploadRes.ok) {
+        throw new Error(uploadData?.error || `Could not upload link (HTTP ${uploadRes.status})`);
+      }
+
+      showToast(`Uploaded link to "${uploadData?.cardName || selectedCard.name}"`);
+      setShowFrameioPicker(false);
+      setFrameioShareLink('');
+      setPickerCardId('');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast(msg || 'Could not upload Frame.io link');
+    } finally {
+      setPickerSubmitting(false);
+    }
   }
 
   /* ─────────────────────────────────────────────────────────────
@@ -663,6 +725,93 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* ── Frame.io target picker modal ───────────────────────── */}
+      {showFrameioPicker && (
+        <div
+          className="cc-overlay"
+          onClick={e => {
+            if (e.target === e.currentTarget && !pickerSubmitting) setShowFrameioPicker(false);
+          }}
+        >
+          <div className="cc-modal">
+            <button
+              className="modal-close"
+              onClick={() => {
+                if (pickerSubmitting) return;
+                setShowFrameioPicker(false);
+              }}
+            >
+              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
+            </button>
+
+            <h3>Select target board and card</h3>
+            <p className="cc-subtitle">
+              Choose where the new Frame.io link should be pasted.
+            </p>
+
+            <div className="cc-link-preview">
+              <strong>New Frame.io Link</strong>
+              {frameioShareLink}
+            </div>
+
+            <div className="cc-selectors">
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Board</label>
+                <select
+                  value={pickerBoardId}
+                  onChange={e => {
+                    const nextBoardId = e.target.value;
+                    setPickerBoardId(nextBoardId);
+                    loadPickerCards(nextBoardId);
+                  }}
+                  disabled={pickerSubmitting}
+                >
+                  <option value="">— select a board —</option>
+                  {boards.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Card</label>
+                <select
+                  value={pickerCardId}
+                  onChange={e => setPickerCardId(e.target.value)}
+                  disabled={!pickerBoardId || pickerLoadingCards || pickerSubmitting}
+                >
+                  <option value="">
+                    {pickerLoadingCards ? 'Loading cards…' : '— select a card —'}
+                  </option>
+                  {pickerCards.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="cc-actions">
+              <button
+                className="btn btn-ghost"
+                onClick={() => setShowFrameioPicker(false)}
+                disabled={pickerSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-confirm"
+                onClick={handleConfirmFrameioUpload}
+                disabled={pickerSubmitting || !pickerBoardId || !pickerCardId}
+              >
+                {pickerSubmitting ? 'Uploading…' : 'Upload Link'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Toast ──────────────────────────────────────────────── */}
       <div className={`toast ${toast ? 'show' : ''}`}>{toast}</div>
 
@@ -670,6 +819,7 @@ export default function Dashboard() {
       <KeyboardHandler
         onEscape={() => {
           if (selectedCard) { setSelectedCard(null); return; }
+          if (showFrameioPicker && !pickerSubmitting) { setShowFrameioPicker(false); return; }
         }}
       />
     </>

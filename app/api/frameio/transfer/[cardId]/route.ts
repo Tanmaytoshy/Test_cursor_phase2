@@ -27,8 +27,10 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ cardId: string }> }
 ) {
+  let cardIdForLog: string | null = null;
   try {
     const { cardId } = await params;
+    cardIdForLog = cardId;
     const { apiKey, token } = getTrelloCredentials(request.headers);
 
     if (!apiKey || !token) {
@@ -93,6 +95,11 @@ export async function POST(
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
+    // Temporary debug logging to expose the exact backend failure in local runs.
+    console.error('[frameio-transfer] POST failed', {
+      cardId: cardIdForLog,
+      error: toDebugError(err),
+    });
     // #region agent log
     fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'initial',hypothesisId:'H8',location:'app/api/frameio/transfer/[cardId]/route.ts:POST',message:'Transfer route failed',data:{error:msg.slice(0,300)},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
@@ -158,4 +165,38 @@ function safeHost(url: string): string | null {
   } catch {
     return null;
   }
+}
+
+function toDebugError(err: unknown): Record<string, unknown> {
+  if (!(err instanceof Error)) {
+    return { raw: String(err) };
+  }
+
+  const e = err as Error & {
+    status?: number;
+    code?: string | number;
+    response?: unknown;
+    body?: unknown;
+    details?: unknown;
+    cause?: unknown;
+  };
+
+  return {
+    name: e.name,
+    message: e.message,
+    stack: e.stack,
+    code: e.code,
+    status: e.status,
+    response: e.response,
+    body: e.body,
+    details: e.details,
+    cause:
+      e.cause instanceof Error
+        ? {
+            name: e.cause.name,
+            message: e.cause.message,
+            stack: e.cause.stack,
+          }
+        : e.cause,
+  };
 }
