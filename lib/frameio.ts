@@ -245,8 +245,17 @@ export async function resolveFrameioTargetFolderId(projectName?: string): Promis
     throw new Error('Set FRAMEIO_FOLDER_ID or FRAMEIO_PROJECT_NAME');
   }
 
-  const { root_folder_id } = await findFrameioProject(desiredProjectName);
-  return root_folder_id;
+  try {
+    const { root_folder_id } = await findFrameioProject(desiredProjectName);
+    return root_folder_id;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Could not resolve Frame.io project folder automatically. ` +
+      `Set FRAMEIO_FOLDER_ID in environment variables to make this bulletproof. ` +
+      `Underlying error: ${msg}`
+    );
+  }
 }
 
 /**
