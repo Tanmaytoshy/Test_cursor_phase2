@@ -238,9 +238,25 @@ export async function resolveFrameioPublicSourceUrl(url: string): Promise<string
  */
 export async function resolveFrameioTargetFolderId(projectName?: string): Promise<string> {
   const explicitFolderId = process.env.FRAMEIO_FOLDER_ID?.trim();
-  if (explicitFolderId) return explicitFolderId;
-
   const desiredProjectName = (projectName || process.env.FRAMEIO_PROJECT_NAME || '').trim();
+
+  if (explicitFolderId) {
+    const accountId = await getFrameioAccountId();
+    const folderExists = await doesFrameioFolderExist(accountId, explicitFolderId);
+    if (folderExists) return explicitFolderId;
+
+    // Common misconfiguration: project ID provided where folder ID is required.
+    if (desiredProjectName) {
+      const { root_folder_id } = await findFrameioProject(desiredProjectName);
+      return root_folder_id;
+    }
+
+    throw new Error(
+      `FRAMEIO_FOLDER_ID "${explicitFolderId}" was not found in account ${accountId}. ` +
+      `Set FRAMEIO_FOLDER_ID to a valid folder UUID or set FRAMEIO_PROJECT_NAME to auto-resolve a root folder.`
+    );
+  }
+
   if (!desiredProjectName) {
     throw new Error('Set FRAMEIO_FOLDER_ID or FRAMEIO_PROJECT_NAME');
   }
@@ -256,6 +272,16 @@ export async function resolveFrameioTargetFolderId(projectName?: string): Promis
       `Underlying error: ${msg}`
     );
   }
+}
+
+async function doesFrameioFolderExist(accountId: string, folderId: string): Promise<boolean> {
+  const res = await fetch(`${FRAMEIO_BASE}/accounts/${accountId}/folders/${folderId}`, {
+    headers: await frameioHeaders(),
+  });
+  if (res.ok) return true;
+  if (res.status === 404) return false;
+  const text = await res.text();
+  throw new Error(`Failed to validate Frame.io folder ${folderId} (${res.status}): ${text}`);
 }
 
 /**
