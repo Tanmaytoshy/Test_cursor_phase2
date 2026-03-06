@@ -5,6 +5,7 @@ import {
   findFrameioProject,
   getFrameioDownloadUrl,
   getFrameioDownloadUrlByIdFallback,
+  resolveFrameioPublicSourceUrl,
   uploadToFrameio,
 } from '@/lib/frameio';
 
@@ -63,10 +64,18 @@ export async function POST(
       fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'post-fix',hypothesisId:'H11',location:'app/api/frameio/transfer/[cardId]/route.ts:POST',message:'Primary file lookup failed; evaluating id fallback',data:{shouldTryIdFallback,errorPreview:msg.slice(0,180),sourceHost:safeHost(sourceFrameioUrl)},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
       if (!shouldTryIdFallback) throw err;
-      downloadUrl = await getFrameioDownloadUrlByIdFallback(fileId);
-      // #region agent log
-      fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'post-fix',hypothesisId:'H12',location:'app/api/frameio/transfer/[cardId]/route.ts:POST',message:'Id fallback resolved download URL',data:{sourceHost:safeHost(sourceFrameioUrl),downloadUrlHost:safeHost(downloadUrl)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
+      try {
+        downloadUrl = await getFrameioDownloadUrlByIdFallback(fileId);
+        // #region agent log
+        fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'post-fix',hypothesisId:'H12',location:'app/api/frameio/transfer/[cardId]/route.ts:POST',message:'Id fallback resolved download URL',data:{sourceHost:safeHost(sourceFrameioUrl),downloadUrlHost:safeHost(downloadUrl)},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+      } catch (idFallbackErr: unknown) {
+        const idFallbackMsg = idFallbackErr instanceof Error ? idFallbackErr.message : String(idFallbackErr);
+        downloadUrl = await resolveFrameioPublicSourceUrl(sourceFrameioUrl);
+        // #region agent log
+        fetch('http://127.0.0.1:7910/ingest/13c36fba-646f-40a8-b59a-5c7afb7d1da7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7515eb'},body:JSON.stringify({sessionId:'7515eb',runId:'post-fix',hypothesisId:'H18',location:'app/api/frameio/transfer/[cardId]/route.ts:POST',message:'Using public source URL fallback after id fallback failure',data:{idFallbackError:idFallbackMsg.slice(0,180),sourceHost:safeHost(sourceFrameioUrl),resolvedSourceHost:safeHost(downloadUrl)},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+      }
     }
 
     const projectName = process.env.FRAMEIO_PROJECT_NAME;

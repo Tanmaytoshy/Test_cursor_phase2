@@ -176,7 +176,6 @@ export async function getFrameioDownloadUrl(fileId: string): Promise<string> {
  */
 export async function getFrameioDownloadUrlByIdFallback(fileId: string): Promise<string> {
   const endpointCandidates = [
-    { source: 'v4-file', url: `${FRAMEIO_BASE}/files/${fileId}?include=media_links.original` },
     { source: 'v2-asset', url: `${FRAMEIO_V2_BASE}/assets/${fileId}` },
   ];
 
@@ -222,6 +221,15 @@ function safeHost(url: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Last-resort source URL for remote upload:
+ * follows short-link redirects and returns the final public URL.
+ */
+export async function resolveFrameioPublicSourceUrl(url: string): Promise<string> {
+  const resolved = await followRedirect(url);
+  return resolved || url;
 }
 
 /**
