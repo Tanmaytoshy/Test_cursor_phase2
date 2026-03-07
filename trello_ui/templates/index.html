@@ -788,6 +788,32 @@ function memberAvatars(members) {
   ).join('')}${members.length > 3 ? `<div class="avatar">+${members.length-3}</div>` : ''}</div>`;
 }
 
+function sanitizeTrelloDescription(desc, { stripDriveLinks = false } = {}) {
+  let text = String(desc || '');
+
+  // Trello smart links can appear as both [url] and (url "smartCard-inline"), keep one clean URL.
+  text = text
+    .replace(/\[\s*(https?:\/\/[^\]\s]+)\s*\]/gim, '$1')
+    .replace(/\(\s*(https?:\/\/[^\s)]+)\s+"smartCard-(?:inline|block)"\s*\)/gim, '$1')
+    .replace(/^\s*\(\s*"smartCard-(?:inline|block)"\s*\)\s*$/gim, '');
+
+  if (stripDriveLinks) {
+    text = text.replace(/https?:\/\/drive\.google\.com\/[^\s<>"')\]]+/gim, '');
+  } else {
+    const seenUrls = new Set();
+    text = text.replace(/https?:\/\/[^\s<>"')\]]+/gim, (url) => {
+      if (seenUrls.has(url)) return '';
+      seenUrls.add(url);
+      return url;
+    });
+  }
+
+  return text
+    .replace(/^\s*[\[\]()]+\s*$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 /* ─── Auth ──────────────────────────────────────────────────── */
 function updateTokenLink() {
   const key = $('input-key').value.trim();
@@ -1026,6 +1052,8 @@ function openModal(card) {
     </div>`
   ).join('');
 
+  const modalDesc = sanitizeTrelloDescription(card.desc || '');
+
   $('modal-content').innerHTML = `
     <div class="modal-list-tag">${escHtml(card.listName || '')}</div>
     <div class="modal-title">${escHtml(card.name)}</div>
@@ -1034,7 +1062,7 @@ function openModal(card) {
 
     <div class="modal-section">
       <div class="modal-section-title">Description</div>
-      <div class="modal-desc ${card.desc ? '' : 'empty'}">${escHtml(card.desc || 'No description provided.')}</div>
+      <div class="modal-desc ${modalDesc ? '' : 'empty'}">${escHtml(modalDesc || 'No description provided.')}</div>
     </div>
 
     <div class="modal-row modal-section">
@@ -1340,7 +1368,22 @@ $('cc-board-select').addEventListener('change', async function () {
       opt.textContent = l.name;
       listSel.appendChild(opt);
     });
-    listSel.disabled = false;
+
+    // Prefer "Raw Videos" automatically for pipeline-created cards.
+    const rawVideosList = lists.find((l) => {
+      const normalized = String(l.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      return normalized === 'raw videos' || normalized === 'raw video';
+    });
+
+    if (rawVideosList) {
+      listSel.value = rawVideosList.id;
+      $('cc-confirm').disabled = false;
+      // Keep list editable in case workflow changes per board.
+      listSel.disabled = false;
+    } else {
+      listSel.disabled = false;
+      toast('Raw Videos list not found on this board — choose a destination list manually.');
+    }
   } catch {
     toast('Failed to load lists');
     listSel.innerHTML = '<option value="">— failed to load —</option>';
@@ -1358,14 +1401,8 @@ $('cc-confirm').addEventListener('click', async function () {
   this.disabled = true;
   this.textContent = 'Creating…';
 
-  // Build new description: strip any URLs and Trello smart-link artifacts from
-  // the original, then append the new public link once.
-  const strippedDesc = (_ccSourceCard.desc || '')
-    .replace(/https?:\/\/\S+/g, '')  // remove all http/https links
-    .replace(/^\s*[\[\]]\s*$/gm, '') // remove leftover smart-link bracket lines
-    .replace(/^\s*\(\s*"smartCard-(?:inline|block)"\s*\)\s*$/gim, '') // remove smartCard markers
-    .replace(/\n{3,}/g, '\n\n')      // collapse runs of blank lines left behind
-    .trim();
+  // Keep original notes, but remove any old Drive links and Trello smart-link artifacts.
+  const strippedDesc = sanitizeTrelloDescription(_ccSourceCard.desc || '', { stripDriveLinks: true });
   const newDesc = strippedDesc
     ? `${strippedDesc}\n\n---\nPublic Drive Link: ${_ccPublicUrl}`
     : `Public Drive Link: ${_ccPublicUrl}`;

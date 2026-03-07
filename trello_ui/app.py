@@ -61,7 +61,14 @@ def _find_drive_url(description: str, attachments: list[dict]) -> str | None:
 
 # ── Background pipeline worker ─────────────────────────────────
 
-def _pipeline_worker(job_id: str, card_id: str, api_key: str, token: str, card_name: str):
+def _pipeline_worker(
+    job_id: str,
+    card_id: str,
+    api_key: str,
+    token: str,
+    card_name: str,
+    board_name: str = "",
+):
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     def fail(msg: str):
@@ -94,6 +101,7 @@ def _pipeline_worker(job_id: str, card_id: str, api_key: str, token: str, card_n
             source_token=os.path.join(project_root, drive_transfer.DEFAULT_SOURCE_TOKEN),
             dest_token=os.path.join(project_root, drive_transfer.DEFAULT_DEST_TOKEN),
             tmp_dir=os.path.join(project_root, "tmp_pipeline"),
+            destination_root_folder=board_name.strip() or None,
         )
     except Exception as e:
         app.logger.error("Drive transfer failed: %s\n%s", e, traceback.format_exc())
@@ -224,6 +232,15 @@ def start_pipeline(card_id):
 
     body      = request.get_json(silent=True) or {}
     card_name = body.get("card_name", "")
+    board_id  = body.get("board_id", "")
+    board_name = ""
+    if board_id:
+        try:
+            board = trello_get(f"/boards/{board_id}", api_key, token, fields="id,name")
+            board_name = board.get("name", "") or ""
+        except Exception:
+            app.logger.warning("Could not resolve board name for board_id=%s", board_id)
+
     job_id    = str(uuid.uuid4())
 
     with _jobs_lock:
@@ -231,12 +248,13 @@ def start_pipeline(card_id):
             "status":     "running",
             "card_id":    card_id,
             "card_name":  card_name,
+            "board_name": board_name,
             "started_at": time.time(),
         }
 
     t = threading.Thread(
         target=_pipeline_worker,
-        args=(job_id, card_id, api_key, token, card_name),
+        args=(job_id, card_id, api_key, token, card_name, board_name),
         daemon=True,
     )
     t.start()

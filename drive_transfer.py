@@ -129,6 +129,49 @@ def create_folder(service, folder_name: str) -> str:
     return folder["id"]
 
 
+def _escape_drive_query_value(value: str) -> str:
+    """Escape a value for a Drive API query string."""
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
+def find_folder_by_name(service, folder_name: str, parent_folder_id: str | None = None) -> str | None:
+    """Find a folder by exact name (optionally inside a parent folder). Returns folder ID or None."""
+    safe_name = _escape_drive_query_value(folder_name)
+    query_parts = [
+        "mimeType = 'application/vnd.google-apps.folder'",
+        f"name = '{safe_name}'",
+        "trashed = false",
+    ]
+    if parent_folder_id:
+        query_parts.append(f"'{parent_folder_id}' in parents")
+
+    resp = service.files().list(
+        q=" and ".join(query_parts),
+        fields="files(id, name)",
+        pageSize=1,
+    ).execute()
+    files = resp.get("files", [])
+    if not files:
+        return None
+    return files[0]["id"]
+
+
+def ensure_folder(service, folder_name: str, parent_folder_id: str | None = None) -> str:
+    """Create folder if needed, otherwise return the existing folder ID."""
+    existing_id = find_folder_by_name(service, folder_name, parent_folder_id=parent_folder_id)
+    if existing_id:
+        return existing_id
+
+    body = {
+        "name": folder_name,
+        "mimeType": "application/vnd.google-apps.folder",
+    }
+    if parent_folder_id:
+        body["parents"] = [parent_folder_id]
+    folder = service.files().create(body=body, fields="id").execute()
+    return folder["id"]
+
+
 def download_file(service, file_id: str, dest_path: str, label: str = "") -> str:
     """Download a Drive file by ID to dest_path. Returns dest_path."""
     request = service.files().get_media(fileId=file_id)
@@ -220,6 +263,7 @@ def run(
     dest_token: str = DEFAULT_DEST_TOKEN,
     keep_file: bool = False,
     tmp_dir: str = ".",
+    destination_root_folder: str | None = None,
 ) -> list[str]:
     """
     Main entry point. Returns a list of public shareable links for all
@@ -252,6 +296,13 @@ def run(
 
     os.makedirs(tmp_dir, exist_ok=True)
 
+    destination_parent_folder_id: str | None = None
+    if destination_root_folder and destination_root_folder.strip():
+        root_folder_name = destination_root_folder.strip()
+        print(f'Ensuring destination root folder "{root_folder_name}" exists...')
+        destination_parent_folder_id = ensure_folder(dest_service, root_folder_name)
+        print(f"  Destination root folder id: {destination_parent_folder_id}")
+
     if kind == "folder":
         # Mirror the source folder structure exactly:
         # 1. Get source folder name
@@ -269,7 +320,13 @@ def run(
         print(f"Found {len(files)} file(s): {', '.join(f['name'] for f in files)}\n")
 
         print(f"Creating folder \"{folder_name}\" in destination Drive...")
-        dest_folder_id = create_folder(dest_service, folder_name)
+        dest_folder_id = ensure_folder(
+            dest_service,
+            folder_name,
+            parent_folder_id=destination_parent_folder_id,
+        )
+        if destination_parent_folder_id:
+            print(f"  Using destination subfolder in board folder (id: {dest_folder_id})")
         print(f"  Folder created (id: {dest_folder_id})\n")
 
         for i, f in enumerate(files, 1):
@@ -310,7 +367,7 @@ def run(
             meta.get("mimeType", ""),
             tmp_dir,
             keep_file,
-            
+            dest_folder_id=destination_parent_folder_id,
         )
         make_public(dest_service, new_id)
         link = file_shareable_link(new_id)
