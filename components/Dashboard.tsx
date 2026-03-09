@@ -70,6 +70,8 @@ export default function Dashboard() {
   const [toast, setToast]                 = useState('');
   const [toastKey, setToastKey]           = useState(0);
   const [processingDoneIds, setProcessingDoneIds] = useState<Record<string, boolean>>({});
+  const [processingPhase1Ids, setProcessingPhase1Ids] = useState<Record<string, boolean>>({});
+  const [phase1ResultByCardId, setPhase1ResultByCardId] = useState<Record<string, string[]>>({});
   const [showFrameioPicker, setShowFrameioPicker] = useState(false);
   const [frameioShareLink, setFrameioShareLink] = useState('');
   const [pickerBoardId, setPickerBoardId] = useState('');
@@ -77,6 +79,14 @@ export default function Dashboard() {
   const [pickerCards, setPickerCards] = useState<TrelloCard[]>([]);
   const [pickerLoadingCards, setPickerLoadingCards] = useState(false);
   const [pickerSubmitting, setPickerSubmitting] = useState(false);
+  const [showCreateCardModal, setShowCreateCardModal] = useState(false);
+  const [createCardBoardId, setCreateCardBoardId] = useState('');
+  const [createCardListId, setCreateCardListId] = useState('');
+  const [createCardLists, setCreateCardLists] = useState<TrelloList[]>([]);
+  const [createCardLoadingLists, setCreateCardLoadingLists] = useState(false);
+  const [createCardSubmitting, setCreateCardSubmitting] = useState(false);
+  const [createCardSource, setCreateCardSource] = useState<TrelloCard | null>(null);
+  const [createCardLinks, setCreateCardLinks] = useState<string[]>([]);
 
   // Webhook automation panel
   const [showWebhook, setShowWebhook]       = useState(false);
@@ -395,6 +405,133 @@ export default function Dashboard() {
     }
   }
 
+  async function sleep(ms: number) {
+    await new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  async function pollPipelineJob(jobId: string) {
+    while (true) {
+      const res = await fetch(`/api/jobs/${jobId}`, { headers: headers() });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || `Job poll failed (HTTP ${res.status})`);
+
+      if (data?.status === 'complete') {
+        return Array.isArray(data?.public_links) ? data.public_links as string[] : [];
+      }
+      if (data?.status === 'error') {
+        throw new Error(data?.error || 'Drive transfer failed');
+      }
+      await sleep(1600);
+    }
+  }
+
+  async function loadCreateCardLists(nextBoardId: string) {
+    if (!nextBoardId) {
+      setCreateCardLists([]);
+      setCreateCardListId('');
+      return;
+    }
+    setCreateCardLoadingLists(true);
+    setCreateCardListId('');
+    try {
+      const res = await fetch(`/api/boards/${nextBoardId}/lists`, { headers: headers() });
+      const data = await res.json().catch(() => []);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const lists: TrelloList[] = Array.isArray(data) ? data : [];
+      setCreateCardLists(lists);
+    } catch {
+      setCreateCardLists([]);
+      showToast('Could not load lists for selected board');
+    } finally {
+      setCreateCardLoadingLists(false);
+    }
+  }
+
+  async function openCreateCardModal(sourceCard: TrelloCard, links: string[]) {
+    setCreateCardSource(sourceCard);
+    setCreateCardLinks(links);
+    setShowCreateCardModal(true);
+
+    const defaultBoardId = boardId || boards[0]?.id || '';
+    setCreateCardBoardId(defaultBoardId);
+    await loadCreateCardLists(defaultBoardId);
+  }
+
+  async function runPhase1Pipeline(card: TrelloCard) {
+    if (processingPhase1Ids[card.id]) return;
+    setProcessingPhase1Ids(prev => ({ ...prev, [card.id]: true }));
+    try {
+      const startRes = await fetch(`/api/pipeline/${card.id}`, {
+        method: 'POST',
+        headers: { ...headers(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ card_name: card.name }),
+      });
+      const startData = await startRes.json().catch(() => null);
+      if (!startRes.ok) {
+        throw new Error(startData?.error || `Could not start pipeline (HTTP ${startRes.status})`);
+      }
+      const jobId: string = String(startData?.job_id || '');
+      if (!jobId) throw new Error('Pipeline started but no job ID was returned');
+
+      const links = await pollPipelineJob(jobId);
+      if (!links.length) throw new Error('Pipeline completed but no Drive links were generated');
+
+      setPhase1ResultByCardId(prev => ({ ...prev, [card.id]: links }));
+      showToast('Phase 1 complete — choose board and list to update');
+      await openCreateCardModal(card, links);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast(msg || 'Phase 1 failed');
+    } finally {
+      setProcessingPhase1Ids(prev => ({ ...prev, [card.id]: false }));
+    }
+  }
+
+  async function handleCreateCardFromPhase1Result() {
+    if (!createCardSource) return;
+    if (!createCardBoardId || !createCardListId) {
+      showToast('Please select both board and list');
+      return;
+    }
+    if (!createCardLinks.length) {
+      showToast('No Drive links available to post');
+      return;
+    }
+
+    setCreateCardSubmitting(true);
+    try {
+      const descriptionLines = [
+        ...createCardLinks.map((link, i) => `Drive Link ${i + 1}: ${link}`),
+        '',
+        `Source Card: ${createCardSource.shortUrl || createCardSource.url || 'N/A'}`,
+      ];
+
+      const res = await fetch('/api/cards', {
+        method: 'POST',
+        headers: { ...headers(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idList: createCardListId,
+          name: createCardSource.name,
+          desc: descriptionLines.join('\n'),
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error || `Could not create card (HTTP ${res.status})`);
+      }
+
+      showToast('Drive link card created successfully');
+      setShowCreateCardModal(false);
+      setCreateCardSource(null);
+      setCreateCardLinks([]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast(msg || 'Could not create target card');
+    } finally {
+      setCreateCardSubmitting(false);
+    }
+  }
+
   /* ─────────────────────────────────────────────────────────────
      RENDER
   ────────────────────────────────────────────────────────────── */
@@ -687,8 +824,18 @@ export default function Dashboard() {
                         {showDoubleCheckPipeline && (
                           <div className="card-action-row" onClick={e => e.stopPropagation()}>
                             <button
+                              className="btn-pipeline"
+                              disabled={!!processingPhase1Ids[card.id] || !!processingDoneIds[card.id]}
+                              onClick={() => runPhase1Pipeline(card)}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                                <path d="M5 12h14"/><path d="M12 5l7 7-7 7"/>
+                              </svg>
+                              {processingPhase1Ids[card.id] ? 'Running Phase 1…' : 'Run Phase 1'}
+                            </button>
+                            <button
                               className="btn-move-done"
-                              disabled={!!processingDoneIds[card.id]}
+                              disabled={!!processingDoneIds[card.id] || !!processingPhase1Ids[card.id]}
                               onClick={() => moveCardToDone(card)}
                             >
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -696,6 +843,14 @@ export default function Dashboard() {
                               </svg>
                               {processingDoneIds[card.id] ? 'Processing…' : 'Move to Done'}
                             </button>
+                            {phase1ResultByCardId[card.id]?.length ? (
+                              <div className="card-created-badge">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                  <path d="M20 6L9 17l-5-5"/>
+                                </svg>
+                                Drive link ready
+                              </div>
+                            ) : null}
                           </div>
                         )}
                       </div>
@@ -812,6 +967,100 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* ── Phase 1 board/list picker modal ───────────────────── */}
+      {showCreateCardModal && (
+        <div
+          className="cc-overlay"
+          onClick={e => {
+            if (e.target === e.currentTarget && !createCardSubmitting) setShowCreateCardModal(false);
+          }}
+        >
+          <div className="cc-modal">
+            <button
+              className="modal-close"
+              onClick={() => {
+                if (createCardSubmitting) return;
+                setShowCreateCardModal(false);
+              }}
+            >
+              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
+            </button>
+
+            <h3>Phase 1: choose board and list</h3>
+            <p className="cc-subtitle">
+              Select where to post the new Google Drive link.
+            </p>
+
+            {createCardSource && (
+              <div className="cc-card-preview">
+                <div className="cc-card-name">{createCardSource.name}</div>
+                <div className="cc-card-list">Source list: {createCardSource.listName || 'Unknown'}</div>
+              </div>
+            )}
+
+            <div className="cc-link-preview">
+              <strong>Drive Link</strong>
+              {createCardLinks[0] || 'No link found'}
+            </div>
+
+            <div className="cc-selectors">
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Board</label>
+                <select
+                  value={createCardBoardId}
+                  onChange={e => {
+                    const nextBoardId = e.target.value;
+                    setCreateCardBoardId(nextBoardId);
+                    loadCreateCardLists(nextBoardId);
+                  }}
+                  disabled={createCardSubmitting}
+                >
+                  <option value="">— select a board —</option>
+                  {boards.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>List</label>
+                <select
+                  value={createCardListId}
+                  onChange={e => setCreateCardListId(e.target.value)}
+                  disabled={!createCardBoardId || createCardLoadingLists || createCardSubmitting}
+                >
+                  <option value="">
+                    {createCardLoadingLists ? 'Loading lists…' : '— select a list —'}
+                  </option>
+                  {createCardLists.map(l => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="cc-actions">
+              <button
+                className="btn btn-ghost"
+                onClick={() => setShowCreateCardModal(false)}
+                disabled={createCardSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-confirm"
+                onClick={handleCreateCardFromPhase1Result}
+                disabled={createCardSubmitting || !createCardBoardId || !createCardListId}
+              >
+                {createCardSubmitting ? 'Updating…' : 'Create Card with Link'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Toast ──────────────────────────────────────────────── */}
       <div className={`toast ${toast ? 'show' : ''}`}>{toast}</div>
 
@@ -820,6 +1069,7 @@ export default function Dashboard() {
         onEscape={() => {
           if (selectedCard) { setSelectedCard(null); return; }
           if (showFrameioPicker && !pickerSubmitting) { setShowFrameioPicker(false); return; }
+          if (showCreateCardModal && !createCardSubmitting) { setShowCreateCardModal(false); return; }
         }}
       />
     </>

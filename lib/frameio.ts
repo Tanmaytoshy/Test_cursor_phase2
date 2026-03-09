@@ -292,11 +292,11 @@ export async function findFrameioProject(
   projectName: string
 ): Promise<{ project_id: string; root_folder_id: string }> {
   const accountId = await getFrameioAccountId();
-  const endpointCandidates = [
-    `${FRAMEIO_BASE}/projects`,
-    `${FRAMEIO_BASE}/teams/${accountId}/projects`,
-    `${FRAMEIO_BASE}/accounts/${accountId}/projects`,
-  ];
+  const workspaceIds = await listFrameioWorkspaceIds(accountId);
+  const endpointCandidates = workspaceIds.map(
+    (workspaceId) =>
+      `${FRAMEIO_BASE}/accounts/${accountId}/workspaces/${workspaceId}/projects`
+  );
 
   const errors: string[] = [];
   for (const base of endpointCandidates) {
@@ -340,6 +340,37 @@ export async function findFrameioProject(
   throw new Error(
     `Frame.io project "${projectName}" not found. Endpoint attempts: ${errors.join(' | ')}`
   );
+}
+
+async function listFrameioWorkspaceIds(accountId: string): Promise<string[]> {
+  const endpoint = `${FRAMEIO_BASE}/accounts/${accountId}/workspaces`;
+  const ids: string[] = [];
+  let after: string | null = null;
+
+  do {
+    const reqUrl = `${endpoint}?page_size=50${after ? `&after=${after}` : ''}`;
+    const res = await fetch(reqUrl, { headers: await frameioHeaders() });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Failed to list Frame.io workspaces (${res.status}) at ${endpoint}: ${text}`);
+    }
+
+    const body: any = await res.json();
+    const workspaces: Array<{ id: string }> = body?.data ?? [];
+    for (const workspace of workspaces) {
+      if (workspace?.id) ids.push(workspace.id);
+    }
+    after = body?.links?.next ? extractAfterCursor(body.links.next) : null;
+  } while (after);
+
+  if (!ids.length) {
+    throw new Error(
+      `No Frame.io workspaces were returned for account ${accountId}. ` +
+      `Verify FRAMEIO_ACCOUNT_ID and Frame.io OAuth permissions.`
+    );
+  }
+
+  return ids;
 }
 
 function extractAfterCursor(nextLink: string): string | null {
