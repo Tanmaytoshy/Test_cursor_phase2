@@ -588,39 +588,41 @@ export default function Dashboard() {
 
             <div className="spacer" />
 
-            <div className="search-wrap">
-              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.2">
-                <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/>
-              </svg>
-              <input
-                type="text"
-                className="search-input"
-                placeholder="Search cards…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
+            <div className="topbar-actions">
+              <div className="search-wrap">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.2">
+                  <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <input
+                  type="text"
+                  className="search-input"
+                  placeholder="Search cards…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                />
+              </div>
+
+              <label className="filter-closed-wrap">
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={e => setShowArchived(e.target.checked)}
+                />
+                Archived
+              </label>
+
+              <button
+                className={`btn btn-ghost btn-sm webhook-toggle-btn${showWebhook ? ' active' : ''}`}
+                onClick={handleToggleWebhookPanel}
+                title="Frame.io Automation"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                </svg>
+                Automation
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={handleLogout}>Sign out</button>
             </div>
-
-            <label className="filter-closed-wrap">
-              <input
-                type="checkbox"
-                checked={showArchived}
-                onChange={e => setShowArchived(e.target.checked)}
-              />
-              Archived
-            </label>
-
-            <button
-              className={`btn btn-ghost btn-sm webhook-toggle-btn${showWebhook ? ' active' : ''}`}
-              onClick={handleToggleWebhookPanel}
-              title="Frame.io Automation"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-              </svg>
-              Automation
-            </button>
-            <button className="btn btn-ghost btn-sm" onClick={handleLogout}>Sign out</button>
           </div>
 
           {/* Webhook automation panel */}

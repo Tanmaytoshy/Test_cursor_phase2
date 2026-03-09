@@ -154,7 +154,8 @@
     /* ── Topbar ───────────────────────────────────────────────── */
     #topbar {
       display: flex; align-items: center; gap: 14px;
-      padding: 0 24px; height: 58px; flex-shrink: 0;
+      padding: 10px 24px; min-height: 58px; flex-shrink: 0;
+      flex-wrap: wrap;
       background: rgba(13,17,32,.9);
       border-bottom: 1px solid var(--border);
       backdrop-filter: blur(16px);
@@ -180,6 +181,13 @@
     }
 
     .spacer { flex: 1; }
+    #topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
 
     #search-wrap { position: relative; }
     #search-wrap svg {
@@ -524,7 +532,8 @@
 
     @media (max-width: 600px) {
       .auth-card { width: 94vw; padding: 28px 20px; }
-      #topbar { padding: 0 12px; gap: 10px; }
+      #topbar { padding: 10px 12px; gap: 10px; }
+      #topbar-actions { width: 100%; justify-content: flex-start; }
       #search { width: 130px; }
     }
   </style>
@@ -596,20 +605,22 @@
 
     <div class="spacer"></div>
 
-    <!-- Search -->
-    <div id="search-wrap">
-      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
-        <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/>
-      </svg>
-      <input type="text" id="search" placeholder="Search cards…" />
+    <div id="topbar-actions">
+      <!-- Search -->
+      <div id="search-wrap">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+          <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/>
+        </svg>
+        <input type="text" id="search" placeholder="Search cards…" />
+      </div>
+
+      <!-- Show archived toggle -->
+      <label id="filter-closed-wrap" style="cursor:pointer">
+        <input type="checkbox" id="filter-closed" /> Archived
+      </label>
+
+      <button class="btn btn-ghost btn-sm" id="logout-btn">Sign out</button>
     </div>
-
-    <!-- Show archived toggle -->
-    <label id="filter-closed-wrap" style="cursor:pointer">
-      <input type="checkbox" id="filter-closed" /> Archived
-    </label>
-
-    <button class="btn btn-ghost btn-sm" id="logout-btn">Sign out</button>
   </div>
 
   <!-- Stats bar -->
