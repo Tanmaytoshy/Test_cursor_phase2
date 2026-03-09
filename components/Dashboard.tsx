@@ -15,6 +15,11 @@ interface WebhookHook { id: string; callbackURL: string; idModel: string; descri
 interface WebhookStatus {
   config: WebhookConfig; allConfigured: boolean;
   isRegistered: boolean; callbackUrl: string | null; webhooks: WebhookHook[];
+  boards?: {
+    editors?: { id: string; name?: string };
+    client?: { id: string; name?: string };
+    autoDiscovered?: boolean;
+  } | null;
 }
 
 /* ─── Types ──────────────────────────────────────────────────── */
@@ -91,6 +96,7 @@ export default function Dashboard() {
   // Webhook automation panel
   const [showWebhook, setShowWebhook]       = useState(false);
   const [webhookStatus, setWebhookStatus]   = useState<WebhookStatus | null>(null);
+  const [clientBoardId, setClientBoardId]   = useState('');
   const [webhookLoading, setWebhookLoading] = useState(false);
   const [webhookAction, setWebhookAction]   = useState<'idle' | 'registering' | 'deleting'>('idle');
 
@@ -127,6 +133,20 @@ export default function Dashboard() {
         const msg = e instanceof Error ? e.message : String(e);
         showToast(`Trello auth failed — set TRELLO_KEY and TRELLO_TOKEN. (${msg})`);
         setIsAuth(false);
+      });
+  }, []);
+
+  // Resolve editor/client board IDs so list-specific actions render on the right board only.
+  useEffect(() => {
+    fetch('/api/webhook/status')
+      .then(async (r) => {
+        const data = await r.json().catch(() => null);
+        if (!r.ok || !data) return;
+        const id = data?.boards?.client?.id;
+        if (typeof id === 'string' && id) setClientBoardId(id);
+      })
+      .catch(() => {
+        // Non-fatal: keep UI working even if webhook status is unavailable.
       });
   }, []);
 
@@ -784,7 +804,7 @@ export default function Dashboard() {
                   )}
                   {list.cards.map(card => {
                     const showDoneActions = isDone(list);
-                    const showPhase1Actions = isRawVideoList(list);
+                    const showPhase1Actions = isRawVideoList(list) && !!clientBoardId && boardId === clientBoardId;
 
                     return (
                       <div
