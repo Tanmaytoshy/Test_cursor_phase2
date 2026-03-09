@@ -344,7 +344,8 @@ export default function Dashboard() {
   }
 
   function isDone(list: TrelloList) {
-    return list.name.trim().toLowerCase() === 'done';
+    const normalized = list.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return normalized === 'done' || normalized.includes('done');
   }
 
   function isRawVideoList(list: TrelloList) {
