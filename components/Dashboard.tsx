@@ -192,14 +192,14 @@ export default function Dashboard() {
     else if (diff < 48) statSoon++;
   });
 
-  async function moveCardToDone(card: TrelloCard) {
+  async function moveDoneCardToSent(card: TrelloCard) {
     if (processingDoneIds[card.id]) return;
     setProcessingDoneIds(prev => ({ ...prev, [card.id]: true }));
 
     try {
-      const doneList = allLists.find(l => l.name.trim().toLowerCase() === 'done');
-      if (!doneList) {
-        showToast('Done list not found');
+      const sentList = allLists.find(l => l.name.trim().toLowerCase() === 'sent');
+      if (!sentList) {
+        showToast('Sent list not found');
         return;
       }
 
@@ -218,18 +218,18 @@ export default function Dashboard() {
         throw new Error('Frame.io upload completed but no shareable link was returned.');
       }
 
-      // Step 2: only after successful transfer, move card to Done.
+      // Step 2: only after successful transfer, move card from Done to Sent.
       const moveRes = await fetch(`/api/cards/${card.id}`, {
         method: 'PATCH',
         headers: { ...headers(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idList: doneList.id }),
+        body: JSON.stringify({ idList: sentList.id }),
       });
       if (!moveRes.ok) throw new Error(`Move failed (HTTP ${moveRes.status})`);
 
       setAllCards(prev => prev.map(c =>
-        c.id === card.id ? { ...c, idList: doneList.id, listName: doneList.name } : c
+        c.id === card.id ? { ...c, idList: sentList.id, listName: sentList.name } : c
       ));
-      showToast(`Moved to "${doneList.name}"`);
+      showToast(`Moved to "${sentList.name}"`);
 
       try {
         await navigator.clipboard.writeText(shareLink);
@@ -240,7 +240,7 @@ export default function Dashboard() {
       await openFrameioPicker(shareLink);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      showToast(msg || 'Could not complete Done + Frame.io flow');
+      showToast(msg || 'Could not complete Done -> Sent + Frame.io flow');
     } finally {
       setProcessingDoneIds(prev => ({ ...prev, [card.id]: false }));
     }
@@ -323,12 +323,13 @@ export default function Dashboard() {
     if (next && !webhookStatus) loadWebhookStatus();
   }
 
-  function isDoubleCheck(list: TrelloList) {
-    const normalized = list.name.toLowerCase().replace(/[^a-z]/g, '');
-    return (
-      normalized.includes('doublecheck') ||
-      normalized.includes('doulecheck')
-    );
+  function isDone(list: TrelloList) {
+    return list.name.trim().toLowerCase() === 'done';
+  }
+
+  function isRawVideoList(list: TrelloList) {
+    const normalized = list.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return normalized.includes('rawvideo') || normalized.includes('rawvideos');
   }
 
   async function loadPickerCards(nextBoardId: string) {
@@ -393,7 +394,11 @@ export default function Dashboard() {
         throw new Error(uploadData?.error || `Could not upload link (HTTP ${uploadRes.status})`);
       }
 
-      showToast(`Uploaded link to "${uploadData?.cardName || selectedCard.name}"`);
+      if (uploadData?.movedToDoubleCheck) {
+        showToast(`Uploaded link and moved "${uploadData?.cardName || selectedCard.name}" to "${uploadData?.doubleCheckListName || 'Double Check'}"`);
+      } else {
+        showToast(`Uploaded link to "${uploadData?.cardName || selectedCard.name}"`);
+      }
       setShowFrameioPicker(false);
       setFrameioShareLink('');
       setPickerCardId('');
@@ -778,7 +783,8 @@ export default function Dashboard() {
                     </div>
                   )}
                   {list.cards.map(card => {
-                    const showDoubleCheckPipeline = isDoubleCheck(list);
+                    const showDoneActions = isDone(list);
+                    const showPhase1Actions = isRawVideoList(list);
 
                     return (
                       <div
@@ -820,28 +826,18 @@ export default function Dashboard() {
                           ) : null}
                         </div>
 
-                        {/* Double Check shortcut -> Done */}
-                        {showDoubleCheckPipeline && (
+                        {/* Phase 1 shortcut on Raw Video cards */}
+                        {showPhase1Actions && (
                           <div className="card-action-row" onClick={e => e.stopPropagation()}>
                             <button
                               className="btn-pipeline"
-                              disabled={!!processingPhase1Ids[card.id] || !!processingDoneIds[card.id]}
+                              disabled={!!processingPhase1Ids[card.id]}
                               onClick={() => runPhase1Pipeline(card)}
                             >
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
                                 <path d="M5 12h14"/><path d="M12 5l7 7-7 7"/>
                               </svg>
                               {processingPhase1Ids[card.id] ? 'Running Phase 1…' : 'Run Phase 1'}
-                            </button>
-                            <button
-                              className="btn-move-done"
-                              disabled={!!processingDoneIds[card.id] || !!processingPhase1Ids[card.id]}
-                              onClick={() => moveCardToDone(card)}
-                            >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                <path d="M20 6L9 17l-5-5"/>
-                              </svg>
-                              {processingDoneIds[card.id] ? 'Processing…' : 'Move to Done'}
                             </button>
                             {phase1ResultByCardId[card.id]?.length ? (
                               <div className="card-created-badge">
@@ -851,6 +847,22 @@ export default function Dashboard() {
                                 Drive link ready
                               </div>
                             ) : null}
+                          </div>
+                        )}
+
+                        {/* Done list shortcut -> Sent + Frame.io upload */}
+                        {showDoneActions && (
+                          <div className="card-action-row" onClick={e => e.stopPropagation()}>
+                            <button
+                              className="btn-move-done"
+                              disabled={!!processingDoneIds[card.id] || !!processingPhase1Ids[card.id]}
+                              onClick={() => moveDoneCardToSent(card)}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <path d="M20 6L9 17l-5-5"/>
+                              </svg>
+                              {processingDoneIds[card.id] ? 'Processing…' : 'Move to Sent'}
+                            </button>
                           </div>
                         )}
                       </div>

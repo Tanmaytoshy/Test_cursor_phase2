@@ -7,6 +7,8 @@ interface TrelloCardDetails {
   id: string;
   name: string;
   desc?: string;
+  idBoard?: string;
+  idList?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -54,12 +56,27 @@ export async function POST(request: NextRequest) {
       : `Frame.io Review: ${frameioLink}`;
 
     await updateCard(apiKey, token, card.id, { desc: updatedDesc });
+    let movedToDoubleCheck = false;
+    let doubleCheckListName: string | null = null;
+
+    if (card.idBoard) {
+      const doubleCheckList = await findDoubleCheckList(apiKey, token, card.idBoard);
+      if (doubleCheckList) {
+        doubleCheckListName = doubleCheckList.name;
+        if (card.idList !== doubleCheckList.id) {
+          await updateCard(apiKey, token, card.id, { idList: doubleCheckList.id });
+          movedToDoubleCheck = true;
+        }
+      }
+    }
 
     return NextResponse.json({
       ok: true,
       cardId: card.id,
       cardName: card.name,
       uploadedLink: frameioLink,
+      movedToDoubleCheck,
+      doubleCheckListName,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -71,6 +88,11 @@ interface TrelloBoardLite {
   id: string;
   name: string;
   closed?: boolean;
+}
+
+interface TrelloListLite {
+  id: string;
+  name: string;
 }
 
 function extractCardRef(input: string): string | null {
@@ -115,7 +137,10 @@ async function resolveCardByBoardAndName(
     );
   }
 
-  return candidates[0];
+  return {
+    ...candidates[0],
+    idBoard: board.id,
+  };
 }
 
 function pickBoardByName(boards: TrelloBoardLite[], boardNameInput: string): TrelloBoardLite | null {
@@ -147,7 +172,7 @@ async function fetchBoardCards(
   boardId: string
 ): Promise<TrelloCardDetails[]> {
   const res = await fetch(
-    `${TRELLO_BASE}/boards/${boardId}/cards?key=${apiKey}&token=${token}&fields=id,name,desc&filter=all`
+    `${TRELLO_BASE}/boards/${boardId}/cards?key=${apiKey}&token=${token}&fields=id,name,desc,idBoard,idList&filter=all`
   );
   if (!res.ok) {
     const text = await res.text();
@@ -163,13 +188,38 @@ function normalizeForMatch(value: string): string {
 
 async function fetchCard(apiKey: string, token: string, cardRef: string): Promise<TrelloCardDetails> {
   const res = await fetch(
-    `${TRELLO_BASE}/cards/${cardRef}?key=${apiKey}&token=${token}&fields=id,name,desc`
+    `${TRELLO_BASE}/cards/${cardRef}?key=${apiKey}&token=${token}&fields=id,name,desc,idBoard,idList`
   );
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Failed to fetch target card (${res.status}): ${text}`);
   }
   return res.json();
+}
+
+async function fetchBoardLists(apiKey: string, token: string, boardId: string): Promise<TrelloListLite[]> {
+  const res = await fetch(
+    `${TRELLO_BASE}/boards/${boardId}/lists?key=${apiKey}&token=${token}&fields=id,name&filter=open`
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to fetch lists for board ${boardId} (${res.status}): ${text}`);
+  }
+  const lists = await res.json();
+  return Array.isArray(lists) ? lists : [];
+}
+
+async function findDoubleCheckList(
+  apiKey: string,
+  token: string,
+  boardId: string
+): Promise<TrelloListLite | null> {
+  const lists = await fetchBoardLists(apiKey, token, boardId);
+  const list = lists.find((l) => {
+    const normalized = l.name.toLowerCase().replace(/[^a-z]/g, '');
+    return normalized.includes('doublecheck') || normalized.includes('doulecheck');
+  });
+  return list || null;
 }
 
 async function updateCard(
